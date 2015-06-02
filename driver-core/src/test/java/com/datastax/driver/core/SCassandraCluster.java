@@ -19,6 +19,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -109,6 +110,7 @@ public class SCassandraCluster {
     @SuppressWarnings("unchecked")
     private void primePeers(PrimingClient primingClient, Scassandra toIgnore) {
         List<Map<String, ?>> rows = Lists.newArrayListWithCapacity(scassandras.size());
+        UUID schemaVersion = UUID.randomUUID();
         for (int i = 0; i < scassandras.size(); i++) {
             if (scassandras.get(i).equals(toIgnore))
                 continue;
@@ -119,6 +121,7 @@ public class SCassandraCluster {
                 .put("data_center", "datacenter1")
                 .put("rack", "rack1")
                 .put("release_version", "2.0.1")
+                .put("schema_version", schemaVersion)
                 .put("tokens", ImmutableSet.of(Long.toString(Long.MIN_VALUE + i)))
                 .build());
         }
@@ -130,6 +133,18 @@ public class SCassandraCluster {
                 .build());
     }
 
+    // CREATE TABLE peers (
+    //     peer inet,
+    //     data_center text,
+    //     host_id uuid,
+    //     preferred_ip inet,
+    //     rack text,
+    //     release_version text,
+    //     rpc_address inet,
+    //     schema_version uuid,
+    //     tokens set<text>,
+    //     PRIMARY KEY ((peer))
+    // )
     private static final ImmutableMap<String, ColumnTypes> SELECT_PEERS_COLUMN_TYPES =
         ImmutableMap.<String, ColumnTypes>builder()
             .put("peer", ColumnTypes.Inet)
@@ -137,6 +152,7 @@ public class SCassandraCluster {
             .put("data_center", ColumnTypes.Text)
             .put("rack", ColumnTypes.Text)
             .put("release_version", ColumnTypes.Text)
+            .put("schema_version", ColumnTypes.Uuid)
             .put("tokens", ColumnTypes.TextSet)
             .build();
 }

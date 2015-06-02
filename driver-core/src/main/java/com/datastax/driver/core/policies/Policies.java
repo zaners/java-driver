@@ -17,6 +17,7 @@ package com.datastax.driver.core.policies;
 
 import com.google.common.base.Objects;
 
+import com.datastax.driver.core.DefaultDiscoveryPolicy;
 import com.datastax.driver.core.ServerSideTimestampGenerator;
 import com.datastax.driver.core.TimestampGenerator;
 
@@ -45,29 +46,22 @@ public class Policies {
     private final AddressTranslater addressTranslater;
     private final TimestampGenerator timestampGenerator;
     private final SpeculativeExecutionPolicy speculativeExecutionPolicy;
+    private final DiscoveryPolicy discoveryPolicy;
 
-    /**
-     * @deprecated this constructor is exposed for backward compatibility.
-     * Use {@link #builder()} instead.
-     */
-    @Deprecated
-    /*
-     * This constructor should be private and called only by the builder.
-     * If a new field gets added, add it to this constructor and make it private, then expose the current signature as a deprecated method
-     * (see end of class).
-     */
-    public Policies(LoadBalancingPolicy loadBalancingPolicy,
+    private Policies(LoadBalancingPolicy loadBalancingPolicy,
                     ReconnectionPolicy reconnectionPolicy,
                     RetryPolicy retryPolicy,
                     AddressTranslater addressTranslater,
                     TimestampGenerator timestampGenerator,
-                    SpeculativeExecutionPolicy speculativeExecutionPolicy) {
+                    SpeculativeExecutionPolicy speculativeExecutionPolicy,
+                    DiscoveryPolicy discoveryPolicy) {
         this.loadBalancingPolicy = loadBalancingPolicy;
         this.reconnectionPolicy = reconnectionPolicy;
         this.retryPolicy = retryPolicy;
         this.addressTranslater = addressTranslater;
         this.timestampGenerator = timestampGenerator;
         this.speculativeExecutionPolicy = speculativeExecutionPolicy;
+        this.discoveryPolicy = discoveryPolicy;
     }
 
     /**
@@ -134,14 +128,25 @@ public class Policies {
     }
 
     /**
-     * The default speculative retry policy.
+     * The default speculative execution policy.
      * <p>
-     * The default speculative retry policy is a {@link NoSpeculativeExecutionPolicy}.
+     * The default speculative execution policy is a {@link NoSpeculativeExecutionPolicy}.
      *
-     * @return the default speculative retry policy.
+     * @return the default speculative execution policy.
      */
     public static SpeculativeExecutionPolicy defaultSpeculativeExecutionPolicy() {
         return DEFAULT_SPECULATIVE_EXECUTION_POLICY;
+    }
+
+    /**
+     * The default discovery policy.
+     * <p>
+     * The default discovery policy is a {@link com.datastax.driver.core.DefaultDiscoveryPolicy}.
+     *
+     * @return the default discovery policy.
+     */
+    public static DiscoveryPolicy defaultDiscoveryPolicy() {
+        return new DefaultDiscoveryPolicy();
     }
 
     /**
@@ -206,6 +211,15 @@ public class Policies {
     }
 
     /**
+     * The discovery policy in use.
+     *
+     * @return the discovery policy in use.
+     */
+    public DiscoveryPolicy getDiscoveryPolicy() {
+        return discoveryPolicy;
+    }
+
+    /**
      * A builder to create a new {@code Policies} object.
      */
     public static class Builder {
@@ -215,6 +229,7 @@ public class Policies {
         private AddressTranslater addressTranslater;
         private TimestampGenerator timestampGenerator;
         private SpeculativeExecutionPolicy speculativeExecutionPolicy;
+        private DiscoveryPolicy discoveryPolicy;
 
         /**
          * Sets the load balancing policy.
@@ -283,12 +298,24 @@ public class Policies {
         }
 
         /**
+         * Sets the discovery policy.
+         *
+         * @param discoveryPolicy see {@link #getDiscoveryPolicy()} ()}.
+         * @return this builder.
+         */
+        public Builder withDiscoveryPolicy(DiscoveryPolicy discoveryPolicy) {
+            this.discoveryPolicy = discoveryPolicy;
+            return this;
+        }
+
+        /**
          * Builds the final object from this builder.
          * <p>
          * Any field that hasn't been set explicitly will get its default value.
          *
          * @return the object.
          */
+        @SuppressWarnings("deprecation")
         public Policies build() {
             return new Policies(
                 loadBalancingPolicy == null ? Policies.defaultLoadBalancingPolicy() : loadBalancingPolicy,
@@ -296,7 +323,8 @@ public class Policies {
                 Objects.firstNonNull(retryPolicy, Policies.defaultRetryPolicy()),
                 Objects.firstNonNull(addressTranslater, Policies.defaultAddressTranslater()),
                 Objects.firstNonNull(timestampGenerator, Policies.defaultTimestampGenerator()),
-                Objects.firstNonNull(speculativeExecutionPolicy, Policies.defaultSpeculativeExecutionPolicy()));
+                Objects.firstNonNull(speculativeExecutionPolicy, Policies.defaultSpeculativeExecutionPolicy()),
+                Objects.firstNonNull(discoveryPolicy, Policies.defaultDiscoveryPolicy()));
         }
     }
 
@@ -313,48 +341,69 @@ public class Policies {
      * @deprecated this constructor is provided for backward compatibility.
      * Use {@link #builder()} instead.
      */
+    @SuppressWarnings("deprecation")
     @Deprecated
     public Policies() {
-        this(defaultLoadBalancingPolicy(), defaultReconnectionPolicy(), defaultRetryPolicy(), defaultAddressTranslater(), defaultTimestampGenerator(), defaultSpeculativeExecutionPolicy());
+        this(defaultLoadBalancingPolicy(), defaultReconnectionPolicy(), defaultRetryPolicy(), defaultAddressTranslater(), defaultTimestampGenerator(), defaultSpeculativeExecutionPolicy(), defaultDiscoveryPolicy());
     }
 
     /**
      * @deprecated this constructor is provided for backward compatibility.
      * Use {@link #builder()} instead.
      */
+    @SuppressWarnings("deprecation")
+    @Deprecated
     public Policies(LoadBalancingPolicy loadBalancingPolicy, ReconnectionPolicy reconnectionPolicy, RetryPolicy retryPolicy) {
-        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, defaultAddressTranslater(), defaultTimestampGenerator(), defaultSpeculativeExecutionPolicy());
+        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, defaultAddressTranslater(), defaultTimestampGenerator(), defaultSpeculativeExecutionPolicy(), defaultDiscoveryPolicy());
     }
 
     /**
      * @deprecated this constructor is provided for backward compatibility.
      * Use {@link #builder()} instead.
      */
+    @SuppressWarnings("deprecation")
+    @Deprecated
     public Policies(LoadBalancingPolicy loadBalancingPolicy, ReconnectionPolicy reconnectionPolicy, RetryPolicy retryPolicy, AddressTranslater addressTranslater) {
-        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, addressTranslater, defaultTimestampGenerator(), defaultSpeculativeExecutionPolicy());
+        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, addressTranslater, defaultTimestampGenerator(), defaultSpeculativeExecutionPolicy(), defaultDiscoveryPolicy());
     }
 
     /**
      * @deprecated this constructor is provided for backward compatibility.
      * Use {@link #builder()} instead.
      */
+    @SuppressWarnings("deprecation")
+    @Deprecated
     public Policies(LoadBalancingPolicy loadBalancingPolicy, ReconnectionPolicy reconnectionPolicy, RetryPolicy retryPolicy, SpeculativeExecutionPolicy speculativeExecutionPolicy) {
-        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, defaultAddressTranslater(), defaultTimestampGenerator(), speculativeExecutionPolicy);
+        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, defaultAddressTranslater(), defaultTimestampGenerator(), speculativeExecutionPolicy, defaultDiscoveryPolicy());
     }
 
     /**
      * @deprecated this constructor is provided for backward compatibility.
      * Use {@link #builder()} instead.
      */
+    @SuppressWarnings("deprecation")
+    @Deprecated
     public Policies(LoadBalancingPolicy loadBalancingPolicy, ReconnectionPolicy reconnectionPolicy, RetryPolicy retryPolicy, AddressTranslater addressTranslater, TimestampGenerator timestampGenerator) {
-        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, addressTranslater, timestampGenerator, defaultSpeculativeExecutionPolicy());
+        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, addressTranslater, timestampGenerator, defaultSpeculativeExecutionPolicy(), defaultDiscoveryPolicy());
     }
 
     /**
      * @deprecated this constructor is provided for backward compatibility.
      * Use {@link #builder()} instead.
      */
+    @SuppressWarnings("deprecation")
+    @Deprecated
     public Policies(LoadBalancingPolicy loadBalancingPolicy, ReconnectionPolicy reconnectionPolicy, RetryPolicy retryPolicy, AddressTranslater addressTranslater, SpeculativeExecutionPolicy speculativeExecutionPolicy) {
-        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, addressTranslater, defaultTimestampGenerator(), speculativeExecutionPolicy);
+        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, addressTranslater, defaultTimestampGenerator(), speculativeExecutionPolicy, defaultDiscoveryPolicy());
+    }
+
+    /**
+     * @deprecated this constructor is provided for backward compatibility.
+     * Use {@link #builder()} instead.
+     */
+    @SuppressWarnings("deprecation")
+    @Deprecated
+    public Policies(LoadBalancingPolicy loadBalancingPolicy, ReconnectionPolicy reconnectionPolicy, RetryPolicy retryPolicy, AddressTranslater addressTranslater, TimestampGenerator timestampGenerator, SpeculativeExecutionPolicy speculativeExecutionPolicy) {
+        this(loadBalancingPolicy, reconnectionPolicy, retryPolicy, addressTranslater, timestampGenerator, speculativeExecutionPolicy, defaultDiscoveryPolicy());
     }
 }
