@@ -627,12 +627,6 @@ class SessionManager extends AbstractSession {
         return future;
     }
 
-    void cleanupIdleConnections(long now) {
-        for (HostConnectionPool pool : pools.values()) {
-            pool.cleanupIdleConnections(now);
-        }
-    }
-
     private static class State implements Session.State {
 
         private final SessionManager session;
@@ -663,7 +657,7 @@ class SessionManager extends AbstractSession {
                 }
 
                 openConnections[i] = p.opened();
-                inFlightQueries[i] = p.totalInFlight.get();
+                inFlightQueries[i] = p.totalInFlight();
                 trashedConnections[i] = p.trashed();
                 i++;
             }

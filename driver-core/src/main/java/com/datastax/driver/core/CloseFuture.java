@@ -16,10 +16,9 @@
 package com.datastax.driver.core;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.google.common.util.concurrent.AbstractFuture;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.*;
 
 /**
  * A future on the shutdown of a Cluster or Session instance.
@@ -65,11 +64,23 @@ public abstract class CloseFuture extends AbstractFuture<Void> {
     // Internal utility for cases where we want to build a future that wait on other ones
     static class Forwarding extends CloseFuture {
 
-        private final List<CloseFuture> futures;
+        private final SettableFuture<Void> forced = SettableFuture.create();
+
+        Forwarding() {
+        }
 
         Forwarding(List<CloseFuture> futures) {
-            this.futures = futures;
+            setFutures(futures);
+        }
 
+        @Override
+        public CloseFuture force() {
+            forced.set(null);
+            return this;
+        }
+
+        void setFutures(final List<CloseFuture> futures) {
+            // Complete this future when underlying ones do
             Futures.addCallback(Futures.allAsList(futures), new FutureCallback<List<Void>>() {
                 public void onFailure(Throwable t) {
                     Forwarding.this.setException(t);
@@ -79,13 +90,15 @@ public abstract class CloseFuture extends AbstractFuture<Void> {
                     Forwarding.this.onFuturesDone();
                 }
             });
-        }
 
-        @Override
-        public CloseFuture force() {
-            for (CloseFuture future : futures)
-                future.force();
-            return this;
+            // Force underlying futures when this future is forced (might have already happened)
+            forced.addListener(new Runnable() {
+                @Override
+                public void run() {
+                    for (CloseFuture future : futures)
+                        future.force();
+                }
+            }, MoreExecutors.sameThreadExecutor());
         }
 
         protected void onFuturesDone() {

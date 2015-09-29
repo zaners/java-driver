@@ -245,14 +245,14 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             assertThat(pool.connections).hasSize(2);
             Connection connection2 = pool.connections.get(1);
 
-            assertThat(connection1.inFlight.get()).isEqualTo(101);
-            assertThat(connection2.inFlight.get()).isEqualTo(0);
+            assertThat(connection1.inFlight).isEqualTo(101);
+            assertThat(connection2.inFlight).isEqualTo(0);
 
             // Go back under the capacity of 1 connection
             completeRequests(51, requests);
 
-            assertThat(connection1.inFlight.get()).isEqualTo(50);
-            assertThat(connection2.inFlight.get()).isEqualTo(0);
+            assertThat(connection1.inFlight).isEqualTo(50);
+            assertThat(connection2.inFlight).isEqualTo(0);
 
             // Given enough time, one connection gets trashed (and the implementation picks the first one)
             Uninterruptibles.sleepUninterruptibly(20, TimeUnit.SECONDS);
@@ -264,8 +264,8 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             assertThat(pool.connections).containsExactly(connection2);
             assertThat(pool.trash).containsExactly(connection1);
-            assertThat(connection1.inFlight.get()).isEqualTo(50);
-            assertThat(connection2.inFlight.get()).isEqualTo(50);
+            assertThat(connection1.inFlight).isEqualTo(50);
+            assertThat(connection2.inFlight).isEqualTo(50);
 
             // Borrowing one more time should resurrect the trashed connection
             requests.addAll(sendRequests(1, pool));
@@ -273,8 +273,8 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             assertThat(pool.connections).containsExactly(connection2, connection1);
             assertThat(pool.trash).isEmpty();
-            assertThat(connection1.inFlight.get()).isEqualTo(50);
-            assertThat(connection2.inFlight.get()).isEqualTo(51);
+            assertThat(connection1.inFlight).isEqualTo(50);
+            assertThat(connection2.inFlight).isEqualTo(51);
         } finally {
             completeRequests(requests);
             cluster.close();
@@ -306,14 +306,14 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             assertThat(pool.connections).hasSize(2);
             Connection connection2 = pool.connections.get(1);
 
-            assertThat(connection1.inFlight.get()).isEqualTo(101);
-            assertThat(connection2.inFlight.get()).isEqualTo(0);
+            assertThat(connection1.inFlight).isEqualTo(101);
+            assertThat(connection2.inFlight).isEqualTo(0);
 
             // Go back under the capacity of 1 connection
             completeRequests(51, requests);
 
-            assertThat(connection1.inFlight.get()).isEqualTo(50);
-            assertThat(connection2.inFlight.get()).isEqualTo(0);
+            assertThat(connection1.inFlight).isEqualTo(50);
+            assertThat(connection2.inFlight).isEqualTo(0);
 
             // Given enough time, one connection gets trashed (and the implementation picks the first one)
             Uninterruptibles.sleepUninterruptibly(20, TimeUnit.SECONDS);
@@ -322,7 +322,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             // Return trashed connection down to 0 inFlight
             completeRequests(50, requests);
-            assertThat(connection1.inFlight.get()).isEqualTo(0);
+            assertThat(connection1.inFlight).isEqualTo(0);
 
             // Give enough time for trashed connection to be cleaned up from the trash:
             Uninterruptibles.sleepUninterruptibly(30, TimeUnit.SECONDS);
@@ -332,7 +332,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             // Fill the live connection to go over the threshold where a second one is needed
             requests.addAll(fillConnectionToThreshold(pool, singletonList(connection2)));
-            assertThat(connection2.inFlight.get()).isEqualTo(101);
+            assertThat(connection2.inFlight).isEqualTo(101);
             verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
 
             // Borrow again to get the new connection
@@ -378,7 +378,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             // It still has in-flight requests so should not get closed.
             Uninterruptibles.sleepUninterruptibly(30, TimeUnit.SECONDS);
             assertThat(pool.trash).containsExactly(connection1);
-            assertThat(connection1.inFlight.get()).isEqualTo(51);
+            assertThat(connection1.inFlight).isEqualTo(51);
             assertThat(connection1.isClosed()).isFalse();
 
             // Consume all inFlight requests on the trashed connection.

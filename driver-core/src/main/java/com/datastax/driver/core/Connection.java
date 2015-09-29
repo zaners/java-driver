@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Objects;
 import com.google.common.collect.MapMaker;
 import com.google.common.util.concurrent.*;
 import io.netty.bootstrap.Bootstrap;
@@ -69,10 +70,6 @@ class Connection {
 
     private static final boolean DISABLE_COALESCING = SystemProperties.getBoolean("com.datastax.driver.DISABLE_COALESCING", false);
 
-    enum State {OPEN, TRASHED, RESURRECTING, GONE }
-
-    final AtomicReference<State> state = new AtomicReference<State>(State.OPEN);
-
     volatile long maxIdleTime;
 
     public final InetSocketAddress address;
@@ -86,7 +83,8 @@ class Connection {
     final Dispatcher dispatcher;
 
     // Used by connection pooling to count how many requests are "in flight" on that connection.
-    public final AtomicInteger inFlight = new AtomicInteger(0);
+    // No need to synchronize because it's only ever modified by one thread (see HostConnectionPool).
+    public volatile int inFlight;
 
     private final AtomicInteger writer = new AtomicInteger(0);
     private volatile String keyspace;
@@ -468,6 +466,10 @@ class Connection {
     }
 
     ListenableFuture<Void> setKeyspaceAsync(final String keyspace) throws ConnectionException, BusyConnectionException {
+        if (Objects.equal(this.keyspace, keyspace)) {
+            return MoreFutures.VOID_SUCCESS;
+        }
+
         logger.trace("{} Setting keyspace {}", this, keyspace);
         // Note: we quote the keyspace below, because the name is the one coming from Cassandra, so it's in the right case already
         Future future = write(new Requests.Query("USE \"" + keyspace + '"'));
@@ -683,14 +685,14 @@ class Connection {
 
     @Override
     public String toString() {
-        return String.format("Connection[%s, inFlight=%d, closed=%b]", name, inFlight.get(), isClosed());
+        return String.format("Connection[%s, inFlight=%d, closed=%b]", name, inFlight, isClosed());
     }
 
     public static class Factory {
 
         public final Timer timer;
 
-        private final EventLoopGroup eventLoopGroup;
+        final EventLoopGroup eventLoopGroup;
         private final Class<? extends Channel> channelClass;
 
         private final ChannelGroup allChannels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);

@@ -73,7 +73,7 @@ public class RequestHandlerTest {
             }
 
             Connection connection = getSingleConnection(session);
-            assertThat(connection.inFlight.get()).isEqualTo(0);
+            assertThat(connection.inFlight).isEqualTo(0);
         } finally {
             if (cluster != null)
                 cluster.close();
