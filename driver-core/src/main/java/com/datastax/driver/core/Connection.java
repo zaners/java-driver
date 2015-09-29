@@ -437,6 +437,10 @@ class Connection {
         return keyspace;
     }
 
+    /**
+     * @deprecated this method performs a blocking call, client code should be refactored to use {@link #setKeyspaceAsync(String)}
+     */
+    @Deprecated
     public void setKeyspace(String keyspace) throws ConnectionException {
         if (keyspace == null)
             return;
