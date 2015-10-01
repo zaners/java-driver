@@ -26,7 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.codahale.metrics.Timer;
+import com.google.common.base.Function;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
 import org.slf4j.Logger;
@@ -36,6 +39,7 @@ import com.datastax.driver.core.exceptions.*;
 import com.datastax.driver.core.policies.RetryPolicy;
 import com.datastax.driver.core.policies.RetryPolicy.RetryDecision.Type;
 import com.datastax.driver.core.policies.SpeculativeExecutionPolicy.SpeculativeExecutionPlan;
+import com.datastax.driver.core.utils.MoreFutures;
 
 /**
  * Handles a request to cassandra, dealing with host failover and retries on
@@ -266,63 +270,85 @@ class RequestHandler {
 
         void sendRequest() {
             try {
-                Host host;
-                while (!isDone.get() && (host = queryPlan.next()) != null && !queryStateRef.get().isCancelled()) {
-                    if(logger.isTraceEnabled())
-                        logger.trace("[{}] Querying node {}", id, host);
-                    if (query(host))
-                        return;
+                if (isDone.get() || queryStateRef.get().isCancelled())
+                    return;
+
+                Host host = queryPlan.next();
+                if (host == null) {
+                    reportNoMoreHosts(this);
+                    return;
                 }
-                reportNoMoreHosts(this);
+
+                if (logger.isTraceEnabled())
+                    logger.trace("[{}] Querying node {}", id, host);
+                query(host);
             } catch (Exception e) {
                 // Shouldn't happen really, but if ever the loadbalancing policy returned iterator throws, we don't want to block.
                 setFinalException(null, new DriverInternalError("An unexpected error happened while sending requests", e));
             }
         }
 
-        private boolean query(final Host host) {
+        private void query(final Host host) {
             HostConnectionPool currentPool = manager.pools.get(host);
             if (currentPool == null || currentPool.isClosed())
-                return false;
+                return;
 
-            if (allowSpeculativeExecutions && nextExecutionScheduled.compareAndSet(false, true))
-                scheduleExecution(speculativeExecutionPlan.nextExecution(host));
+            ListenableFuture<Connection> connectionFuture = currentPool.borrowConnection(
+                manager.configuration().getPoolingOptions().getPoolTimeoutMillis(), TimeUnit.MILLISECONDS);
 
-            Connection connection = null;
-            try {
-                connection = currentPool.borrowConnection(manager.configuration().getPoolingOptions().getPoolTimeoutMillis(), TimeUnit.MILLISECONDS);
-                if (current != null) {
-                    if (triedHosts == null)
-                        triedHosts = new CopyOnWriteArrayList<Host>();
-                    triedHosts.add(current);
+            ListenableFuture<Void> writeFuture = Futures.transform(connectionFuture, new Function<Connection, Void>() {
+                    @Override
+                    public Void apply(Connection connection) {
+                        if (current != null) {
+                            if (triedHosts == null)
+                                triedHosts = new CopyOnWriteArrayList<Host>();
+                            triedHosts.add(current);
+                        }
+                        current = host;
+
+                        if (allowSpeculativeExecutions && nextExecutionScheduled.compareAndSet(false, true))
+                            scheduleExecution(speculativeExecutionPlan.nextExecution(host));
+
+                        try {
+                            write(connection, SpeculativeExecution.this);
+                        } catch (ConnectionException e) {
+                            // If we have any problem with the connection, move to the next node.
+                            if (metricsEnabled())
+                                metrics().getErrorMetrics().getConnectionErrors().inc();
+                            if (connection != null)
+                                connection.release();
+                            logError(host.getSocketAddress(), e);
+                            retry(false, null);
+                        } catch (BusyConnectionException e) {
+                            // The pool shouldn't have give us a busy connection unless we've maxed up the pool, so move on to the next host.
+                            connection.release();
+                            logError(host.getSocketAddress(), e);
+                            retry(false, null);
+                        }
+                        return null;
+                    }
                 }
-                current = host;
-                write(connection, this);
-                return true;
-            } catch (ConnectionException e) {
-                // If we have any problem with the connection, move to the next node.
-                if (metricsEnabled())
-                    metrics().getErrorMetrics().getConnectionErrors().inc();
-                if (connection != null)
-                    connection.release();
-                logError(host.getSocketAddress(), e);
-                return false;
-            } catch (BusyConnectionException e) {
-                // The pool shouldn't have give us a busy connection unless we've maxed up the pool, so move on to the next host.
-                connection.release();
-                logError(host.getSocketAddress(), e);
-                return false;
-            } catch (TimeoutException e) {
-                // We timeout, log it but move to the next node.
-                logError(host.getSocketAddress(), new DriverException("Timeout while trying to acquire available connection (you may want to increase the driver number of per-host connections)", e));
-                return false;
-            } catch (RuntimeException e) {
-                if (connection != null)
-                    connection.release();
-                logger.error("Unexpected error while querying " + host.getAddress(), e);
-                logError(host.getSocketAddress(), e);
-                return false;
-            }
+                // TODO schedule on a different executor?
+            );
+
+            // Retry if we failed to borrow a connection
+            Futures.addCallback(writeFuture, new MoreFutures.FailureCallback<Void>() {
+                    @Override
+                    public void onFailure(Throwable t) {
+                        if (t instanceof TimeoutException) {
+                            // We timeout, log it but move to the next node.
+                            logError(host.getSocketAddress(), new DriverException(
+                                "Timeout while trying to acquire available connection (you may want to increase the driver number of per-host connections)", t));
+                            retry(false, null);
+                        } else {
+                            logger.error("Unexpected error while querying " + host.getAddress(), t);
+                            logError(host.getSocketAddress(), t);
+                            retry(false, null);
+                        }
+                    }
+                }
+                // TODO schedule on a different executor?
+            );
         }
 
         private void write(Connection connection, Connection.ResponseCallback responseCallback) throws ConnectionException, BusyConnectionException {
@@ -367,11 +393,10 @@ class RequestHandler {
                     if (queryStateRef.get().isCancelled())
                         return;
                     try {
-                        if (retryCurrent) {
-                            if (query(h))
-                                return;
-                        }
-                        sendRequest();
+                        if (retryCurrent)
+                            query(h);
+                        else
+                            sendRequest();
                     } catch (Exception e) {
                         setFinalException(null, new DriverInternalError("Unexpected exception while retrying query", e));
                     }

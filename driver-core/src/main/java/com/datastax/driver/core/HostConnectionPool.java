@@ -192,23 +192,7 @@ class HostConnectionPool implements Connection.Owner {
         }
     }
 
-    /**
-     * @deprecated this method is provided temporarily to integrate with existing synchronous code. Eventually all
-     * clients should be refactored to use {@link #borrowConnectionAsync(long, TimeUnit)} (which should then be renamed).
-     */
-    @Deprecated
-    Connection borrowConnection(long timeout, TimeUnit unit) throws ConnectionException, TimeoutException {
-        try {
-            return Uninterruptibles.getUninterruptibly(borrowConnectionAsync(timeout, unit));
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            Throwables.propagateIfInstanceOf(cause, ConnectionException.class);
-            Throwables.propagateIfInstanceOf(cause, TimeoutException.class);
-            throw Throwables.propagate(cause);
-        }
-    }
-
-    ListenableFuture<Connection> borrowConnectionAsync(final long timeout, final TimeUnit unit) {
+    ListenableFuture<Connection> borrowConnection(final long timeout, final TimeUnit unit) {
         final SettableFuture<Connection> connectionFuture = SettableFuture.create();
         if (adminThread.inEventLoop()) {
             safeBorrow(timeout, unit, connectionFuture);

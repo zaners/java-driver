@@ -26,6 +26,7 @@ import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.codahale.metrics.Gauge;
+import com.google.common.base.Throwables;
 import com.google.common.util.concurrent.Uninterruptibles;
 import org.scassandra.cql.PrimitiveType;
 import org.scassandra.http.client.PrimingRequest;
@@ -1055,7 +1056,11 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
         }
 
         private MockRequest(HostConnectionPool pool) throws ConnectionException, TimeoutException, BusyConnectionException {
-            connection = pool.borrowConnection(500, TimeUnit.MILLISECONDS);
+            try {
+                connection = Uninterruptibles.getUninterruptibly(pool.borrowConnection(500, TimeUnit.MILLISECONDS));
+            } catch (ExecutionException e) {
+                throw Throwables.propagate(e.getCause());
+            }
         }
 
         void simulateSuccessResponse() {

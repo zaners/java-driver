@@ -21,9 +21,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.google.common.base.Function;
 import com.google.common.base.Functions;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.*;
@@ -593,27 +591,29 @@ class SessionManager extends AbstractSession {
             if (entry.getKey().getSocketAddress().equals(toExclude))
                 continue;
 
-            try {
-                // Preparing is not critical: if it fails, it will fix itself later when the user tries to execute
-                // the prepared query. So don't block if no connection is available, simply abort.
-                final Connection c = entry.getValue().borrowConnection(0, TimeUnit.MILLISECONDS);
-                ListenableFuture<Response> future = c.write(new Requests.Prepare(query));
-                Futures.addCallback(future, new FutureCallback<Response>() {
-                    @Override
-                    public void onSuccess(Response result) {
-                        c.release();
-                    }
+            // Preparing is not critical: if it fails, it will fix itself later when the user tries to execute
+            // the prepared query. So set the timeout to 0 to not wait for the connection.
+            ListenableFuture<Connection> connectionFuture = entry.getValue().borrowConnection(0, TimeUnit.MILLISECONDS);
+            ListenableFuture<Response> responseFuture = Futures.transform(connectionFuture, new AsyncFunction<Connection, Response>() {
+                @Override
+                public ListenableFuture<Response> apply(final Connection connection) throws Exception {
+                    Connection.Future f = connection.write(new Requests.Prepare(query));
+                    Futures.addCallback(f, new FutureCallback<Response>() {
+                        @Override
+                        public void onSuccess(Response result) {
+                            connection.release();
+                        }
 
-                    @Override
-                    public void onFailure(Throwable t) {
-                        logger.debug(String.format("Unexpected error while preparing query (%s) on %s", query, entry.getKey()), t);
-                        c.release();
-                    }
-                });
-                futures.add(future);
-            } catch (Exception e) {
-                // Again, not being able to prepare the query right now is no big deal, so just ignore
-            }
+                        @Override
+                        public void onFailure(Throwable t) {
+                            logger.debug(String.format("Unexpected error while preparing query (%s) on %s", query, entry.getKey()), t);
+                            connection.release();
+                        }
+                    });
+                    return f;
+                }
+            });
+            futures.add(responseFuture);
         }
         // Return the statement when all futures are done
         return Futures.transform(
