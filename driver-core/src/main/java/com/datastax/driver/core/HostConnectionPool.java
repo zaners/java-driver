@@ -114,6 +114,7 @@ class HostConnectionPool implements Connection.Owner {
         final int coreSize = options().getCoreConnectionsPerHost(hostDistance);
         final List<Connection> connections = Lists.newArrayListWithCapacity(coreSize);
         final List<ListenableFuture<Void>> connectionFutures = Lists.newArrayListWithCapacity(coreSize);
+        String keyspace = manager.poolsState.keyspace;
         for (int i = 0; i < coreSize; i++) {
             Connection connection;
             ListenableFuture<Void> connectionFuture;
@@ -127,7 +128,7 @@ class HostConnectionPool implements Connection.Owner {
             }
             reusedConnection = null;
             connections.add(connection);
-            connectionFutures.add(handleErrors(connectionFuture));
+            connectionFutures.add(handleErrors(setKeyspaceAsync(connectionFuture, connection, keyspace)));
         }
 
         ListenableFuture<List<Void>> allConnectionsFuture = Futures.allAsList(connectionFutures);
@@ -181,6 +182,17 @@ class HostConnectionPool implements Connection.Owner {
 
                 // Otherwise, return success. The pool will simply ignore this connection when it sees that it's been closed.
                 return MoreFutures.VOID_SUCCESS;
+            }
+        });
+    }
+
+    private ListenableFuture<Void> setKeyspaceAsync(ListenableFuture<Void> initFuture, final Connection connection, final String keyspace) {
+        return (keyspace == null)
+            ? initFuture
+            : Futures.transform(initFuture, new AsyncFunction<Void, Void>() {
+            @Override
+            public ListenableFuture<Void> apply(Void input) throws Exception {
+                return connection.setKeyspaceAsync(keyspace);
             }
         });
     }
