@@ -16,7 +16,6 @@
 package com.datastax.driver.core;
 
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -46,13 +45,18 @@ class HostConnectionPool implements Connection.Owner {
 
     @VisibleForTesting
     final List<Connection> connections;
+    // The number of connections that are created, or about to be created (because connections are added asynchronously,
+    // we can't rely on the size of the list to detect if we're above the max size). This is also used by metrics.
+    private volatile int connectionCount;
     @VisibleForTesting
     final Set<Connection> trash;
 
-    // Maintain these separately for metrics (volatile allows querying them outside of adminThread)
-    private volatile int connectionCount;
+    // We maintain these separately for metrics (volatile allows querying them outside of adminThread)
     private volatile int trashedCount;
     private volatile int totalInFlight;
+
+    // The maximum total inFlight since the last call execution of {@link CleanupTask}
+    private int maxTotalInFlight = 0;
 
     private final Queue<BorrowTask> pendingBorrowQueue = new ArrayDeque<BorrowTask>();
 
@@ -67,10 +71,11 @@ class HostConnectionPool implements Connection.Owner {
     // following threshold, we just replace the connection by a new one.
     private final int minAllowedStreams;
 
-    /** The maximum total inFlight since the last call execution of {@link CleanupTask} */
-    private int maxTotalInFlight = 0;
+    // Whether we're already in the process of adding a new connection (to avoid adding multiple ones simultaneously)
+    @VisibleForTesting
+    ListenableFuture<Void> newConnectionCreation;
 
-    private ListenableFuture<Void> newConnection;
+    // A handle to the scheduled cleanup task
     private final ScheduledFuture<?> cleanup;
 
     HostConnectionPool(Host host, HostDistance hostDistance, SessionManager manager) {
@@ -226,10 +231,11 @@ class HostConnectionPool implements Connection.Owner {
             connectionFuture.setException(new ConnectionException(host.getSocketAddress(), "Pool is " + phase));
         }
 
-        if (connections.isEmpty()) {
-            // If core pool size = 0, trigger a new connection. In other cases, the pool should already be doing it.
-            if (options().getCoreConnectionsPerHost(hostDistance) == 0 && host.convictionPolicy.canReconnectNow()) {
-                maybeSpawnNewConnection();
+        if (connections.isEmpty() && host.convictionPolicy.canReconnectNow()) {
+            if (options().getCoreConnectionsPerHost(hostDistance) == 0) {
+                spawnConnectionIfNoneInProgress();
+            } else {
+                safeEnsureCoreConnections();
             }
             enqueue(connectionFuture, timeout, unit);
             return;
@@ -274,16 +280,14 @@ class HostConnectionPool implements Connection.Owner {
 
         maxTotalInFlight = Math.max(maxTotalInFlight, totalInFlight);
 
-        int connectionCount = this.connectionCount +
-            (newConnection != null && !newConnection.isDone() ? 1 : 0);
         if (connectionCount < options().getCoreConnectionsPerHost(hostDistance)) {
-            maybeSpawnNewConnection();
+            spawnConnectionIfNoneInProgress();
         } else if (connectionCount < options().getMaxConnectionsPerHost(hostDistance)) {
             // Add a connection if we fill the first n-1 connections and almost fill the last one
             int currentCapacity = (connectionCount - 1) * options().getMaxRequestsPerConnection(hostDistance)
                 + options().getNewConnectionThreshold(hostDistance);
             if (totalInFlight > currentCapacity)
-                maybeSpawnNewConnection();
+                spawnConnectionIfNoneInProgress();
         }
 
         try {
@@ -305,47 +309,50 @@ class HostConnectionPool implements Connection.Owner {
         }
     }
 
-    private void maybeSpawnNewConnection() {
+    private void spawnConnectionIfNoneInProgress() {
         assert adminThread.inEventLoop();
 
         if (!host.convictionPolicy.canReconnectNow())
             return;
 
         // Abort if we're already in the process of adding a connection
-        if (newConnection != null && !newConnection.isDone())
+        if (newConnectionCreation != null && !newConnectionCreation.isDone())
             return;
 
-        if (connectionCount >= options().getMaxConnectionsPerHost(hostDistance))
-            return;
-
-        newConnection = spawnNewConnection();
+        newConnectionCreation = spawnNewConnectionIfUnderMax();
     }
 
-    private ListenableFuture<Void> spawnNewConnection() {
+    private ListenableFuture<Void> spawnNewConnectionIfUnderMax() {
         assert adminThread.inEventLoop();
 
         if (connectionCount >= options().getMaxConnectionsPerHost(hostDistance))
             return MoreFutures.VOID_SUCCESS;
 
+        connectionCount += 1;
+
         Connection resurrected = tryResurrectFromTrash();
         if (resurrected != null) {
             // Successfully resurrected from trash, it's already initialized so we can dequeue immediately
             connections.add(resurrected);
-            connectionCount = connections.size();
             dequeuePendingBorrows(resurrected);
             return MoreFutures.VOID_SUCCESS;
         } else if (!host.convictionPolicy.canReconnectNow()) {
+            connectionCount -= 1;
             return MoreFutures.VOID_SUCCESS;
         } else {
             logger.debug("Creating new connection on busy pool to {}", host);
             final Connection connection = manager.connectionFactory().newConnection(this);
             ListenableFuture<Void> initFuture = connection.initAsync();
-            initFuture.addListener(new Runnable() {
+            Futures.addCallback(initFuture, new FutureCallback<Void>() {
                 @Override
-                public void run() {
+                public void onSuccess(Void result) {
                     connections.add(connection);
-                    connectionCount = connections.size();
                     dequeuePendingBorrows(connection);
+                }
+
+                @Override
+                public void onFailure(Throwable t) {
+                    connectionCount -= 1;
                 }
             }, adminThread);
             return initFuture;
@@ -420,7 +427,7 @@ class HostConnectionPool implements Connection.Owner {
     private void replaceConnection(Connection connection) {
         assert adminThread.inEventLoop();
 
-        maybeSpawnNewConnection();
+        spawnConnectionIfNoneInProgress();
         connection.maxIdleTime = Long.MIN_VALUE;
         doTrashConnection(connection);
     }
@@ -639,7 +646,7 @@ class HostConnectionPool implements Connection.Owner {
 
         int needed = options().getCoreConnectionsPerHost(hostDistance) - connectionCount;
         for (int i = 0; i < needed; i++) {
-            spawnNewConnection();
+            spawnNewConnectionIfUnderMax();
         }
     }
 

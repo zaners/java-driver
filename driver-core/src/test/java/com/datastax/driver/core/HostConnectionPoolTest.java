@@ -93,7 +93,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
     /**
      * Completes count requests by simulating a successful response.
      */
-    private void completeRequests(int count, List<MockRequest> requests) {
+    private void completeRequests(int count, List<MockRequest> requests) throws Exception {
         Iterator<MockRequest> requestIt = requests.iterator();
         for(int i = 0; i < count; i++) {
             if(requestIt.hasNext()) {
@@ -104,15 +104,19 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
                 break;
             }
         }
+        // pool.returnConnection can be asynchronous, so wait a while to make its effects are visible
+        TimeUnit.MILLISECONDS.sleep(100);
     }
 
     /**
      * Completes all requests by simulating a successful response.
      */
-    private void completeRequests(List<MockRequest> requests) {
+    private void completeRequests(List<MockRequest> requests) throws Exception {
         for(MockRequest request : requests) {
             request.simulateSuccessResponse();
         }
+        // pool.returnConnection can be asynchronous, so wait a while to make its effects are visible
+        TimeUnit.MILLISECONDS.sleep(100);
     }
 
     /**
@@ -124,7 +128,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
      * @test_category connection:connection_pool
      */
     @Test(groups = "short")
-    public void fixed_size_pool_should_fill_its_core_connections_and_then_timeout() throws ConnectionException, TimeoutException, BusyConnectionException {
+    public void fixed_size_pool_should_fill_its_core_connections_and_then_timeout() throws Exception {
         Cluster cluster = createClusterBuilder().build();
         List<MockRequest> requests = newArrayList();
         try {
@@ -168,7 +172,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             requests.addAll(fillConnectionToThreshold(pool, coreConnections));
 
             // Allow time for new connection to be spawned.
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
 
             // Borrow more and ensure the connection returned is a non-core connection.
             for (int i = 0; i < 100; i++) {
@@ -214,7 +218,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             requests.addAll(fillConnectionToThreshold(pool, singletonList(core)));
 
             // Reaching the threshold should have triggered the creation of an extra one
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
             assertThat(pool.connections).hasSize(2);
         } finally {
             completeRequests(requests);
@@ -239,10 +243,11 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             Connection.Factory factory = spy(cluster.manager.connectionFactory);
             cluster.manager.connectionFactory = factory;
             Connection connection1 = pool.connections.get(0);
+            reset(factory);
 
             requests.addAll(fillConnectionToThreshold(pool, singletonList(connection1)));
 
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
             assertThat(pool.connections).hasSize(2);
             Connection connection2 = pool.connections.get(1);
 
@@ -270,7 +275,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             // Borrowing one more time should resurrect the trashed connection
             requests.addAll(sendRequests(1, pool));
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
 
             assertThat(pool.connections).containsExactly(connection2, connection1);
             assertThat(pool.trash).isEmpty();
@@ -302,7 +307,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             requests.addAll(fillConnectionToThreshold(pool, singletonList(connection1)));
 
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
             reset(factory);
             assertThat(pool.connections).hasSize(2);
             Connection connection2 = pool.connections.get(1);
@@ -334,7 +339,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             // Fill the live connection to go over the threshold where a second one is needed
             requests.addAll(fillConnectionToThreshold(pool, singletonList(connection2)));
             assertThat(connection2.inFlight).isEqualTo(101);
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
 
             // Borrow again to get the new connection
             MockRequest request = MockRequest.send(pool);
@@ -369,7 +374,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             // Fill core connection enough to trigger creation of another one
             requests.addAll(fillConnectionToThreshold(pool, singletonList(connection1)));
 
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
             assertThat(pool.connections).hasSize(2);
 
             // Return enough times to get back under the threshold where one connection is enough
@@ -417,9 +422,11 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             cluster.manager.connectionFactory = factory;
             Connection core = pool.connections.get(0);
 
+            reset(factory);
+
             requests.addAll(fillConnectionToThreshold(pool, singletonList(core)));
 
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
             assertThat(pool.connections).hasSize(2);
 
             // Grab the new non-core connection and replace it with a spy.
@@ -437,6 +444,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             // On returning of the connection, should detect that there are no available streams and trash it.
             assertThat(pool.trash).hasSize(0);
             pool.returnConnection(extra1);
+            Uninterruptibles.sleepUninterruptibly(100, TimeUnit.MILLISECONDS);
             assertThat(pool.connections).hasSize(1);
             assertThat(pool.trash).hasSize(1);
         } finally {
@@ -583,6 +591,8 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             Connection core1 = pool.connections.get(1);
             Connection core2 = pool.connections.get(2);
 
+            reset(factory);
+
             // Drop two core connections.
             // Disable new connections initially and we'll eventually reenable it.
             currentClient.disableListener();
@@ -600,18 +610,18 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             assertThat(request.connection).isEqualTo(core1);
 
             // Should not have tried to create a new core connection since reconnection time had not elapsed.
-            verify(factory, never()).open(any(HostConnectionPool.class));
+            verify(factory, never()).newConnection(any(HostConnectionPool.class));
 
             // Sleep to elapse the Reconnection Policy.
             Uninterruptibles.sleepUninterruptibly(reconnectInterval, TimeUnit.MILLISECONDS);
 
-            // Attempt to borrow connection, this should trigger ensureCoreConnections thus spawning a new connection.
+            // Attempt to borrow connection, this should still be the same one since new connections have failed.
             request = MockRequest.send(pool);
             requests.add(request);
             assertThat(request.connection).isEqualTo(core1);
 
             // Should have tried to open up to core connections as result of borrowing a connection past reconnect time and not being at core.
-            verify(factory, timeout(reconnectInterval).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, timeout(reconnectInterval).times(1)).newConnection(any(HostConnectionPool.class));
             reset(factory);
 
             // Sleep for reconnect interval to allow reconnection time to elapse.
@@ -624,17 +634,22 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             // Try to borrow a connection, the pool should grow.
             requests.add(MockRequest.send(pool));
-            verify(factory, timeout((reconnectInterval + readTimeout) * 2).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, timeout((reconnectInterval + readTimeout) * 2).times(1)).newConnection(any(HostConnectionPool.class));
             reset(factory);
+
+            // (the pool prevents simultaneous connection creations, so wait for the previous one to be fully done before we continue)
+            pool.newConnectionCreation.get();
 
             // Another core connection should be opened as result of another request to get us up to core connections.
             requests.add(MockRequest.send(pool));
-            verify(factory, timeout((reconnectInterval + readTimeout) * 2).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, timeout((reconnectInterval + readTimeout) * 2).times(1)).newConnection(any(HostConnectionPool.class));
             reset(factory);
+
+            pool.newConnectionCreation.get();
 
             // Sending another request should not grow the pool any more, since we are now at core connections.
             requests.add(MockRequest.send(pool));
-            verify(factory, after((reconnectInterval + readTimeout) * 2).never()).open(any(HostConnectionPool.class));
+            verify(factory, after((reconnectInterval + readTimeout) * 2).never()).newConnection(any(HostConnectionPool.class));
         } finally {
             completeRequests(requests);
             cluster.close();
@@ -669,6 +684,8 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             HostConnectionPool pool = createPool(cluster, 1, 2);
             Connection core0 = pool.connections.get(0);
 
+            reset(factory);
+
             // Create enough inFlight requests to spawn another connection.
             List<MockRequest> core0requests = newArrayList();
             for (int i = 0; i < 101; i++) {
@@ -678,10 +695,10 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             }
 
             // Pool should grow by 1.
-            verify(factory, after(1000).times(1)).open(any(HostConnectionPool.class));
+            verify(factory, after(1000).times(1)).newConnection(any(HostConnectionPool.class));
             assertThat(pool.connections).hasSize(2);
 
-            // Reset factory mock as we'll be checking for new open() invokes later.
+            // Reset factory mock as we'll be checking for new newConnection() invokes later.
             reset(factory);
 
             // Grab the new non-core connection.
@@ -704,7 +721,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             assertThat(pool.connections).hasSize(1);
 
             // A new connection should never have been spawned since we didn't max out core.
-            verify(factory, after(readTimeout).never()).open(any(HostConnectionPool.class));
+            verify(factory, after(readTimeout).never()).newConnection(any(HostConnectionPool.class));
 
             // Borrow another connection, since we exceed max another connection should be opened.
             MockRequest request = MockRequest.send(pool);
@@ -712,7 +729,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             assertThat(request.connection).isEqualTo(extra1);
 
             // After some time the a connection should attempt to be opened (but will fail).
-            verify(factory, timeout(readTimeout)).open(any(HostConnectionPool.class));
+            verify(factory, timeout(readTimeout)).newConnection(any(HostConnectionPool.class));
             assertThat(pool.connections).hasSize(1);
 
             // Wait some reasonable amount of time for connection to reestablish then check pool size.
@@ -793,7 +810,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             // to spawn new connections (since it only allows one simultaneous creation).
             for (int i = 5; i <= 8; i++) {
                 requests.add(MockRequest.send(pool));
-                verify(factory, timeout(readTimeout)).open(any(HostConnectionPool.class));
+                verify(factory, timeout(readTimeout)).newConnection(any(HostConnectionPool.class));
                 reset(factory);
                 Uninterruptibles.sleepUninterruptibly(readTimeout, TimeUnit.MILLISECONDS);
                 assertThat(pool.connections).hasSize(i);
@@ -898,7 +915,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             request.simulateSuccessResponse();
 
             // Should create up to core connections.
-            verify(factory, timeout(readTimeout * 8).times(8)).open(any(HostConnectionPool.class));
+            verify(factory, timeout(readTimeout * 8).times(8)).newConnection(any(HostConnectionPool.class));
             Uninterruptibles.sleepUninterruptibly(readTimeout, TimeUnit.MILLISECONDS);
             assertThat(pool.connections).hasSize(8);
         } finally {
@@ -1059,7 +1076,9 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             try {
                 connection = Uninterruptibles.getUninterruptibly(pool.borrowConnection(500, TimeUnit.MILLISECONDS));
             } catch (ExecutionException e) {
-                throw Throwables.propagate(e.getCause());
+                Throwable cause = e.getCause();
+                Throwables.propagateIfInstanceOf(cause, TimeoutException.class);
+                throw Throwables.propagate(cause);
             }
         }
 
