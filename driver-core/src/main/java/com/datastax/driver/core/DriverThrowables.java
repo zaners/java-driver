@@ -20,9 +20,9 @@ import com.datastax.driver.core.exceptions.DriverInternalError;
 
 import java.util.concurrent.ExecutionException;
 
-class DriverThrowables {
+public class DriverThrowables {
 
-    static RuntimeException propagateCause(ExecutionException e) {
+    public static RuntimeException propagateCause(ExecutionException e) {
         Throwable cause = e.getCause();
 
         if (cause instanceof Error)
