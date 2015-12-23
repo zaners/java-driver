@@ -21,7 +21,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.Uninterruptibles;
 
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -132,16 +131,6 @@ public abstract class AbstractSession implements Session {
             }
         });
     }
-
-    /**
-     * Prepares the provided query string asynchronously,
-     * sending along the provided custom payload, if any.
-     *
-     * @param query         the CQL query string to prepare
-     * @param customPayload the custom payload to send along the query, or {@code null} if no payload is to be sent
-     * @return a future on the prepared statement corresponding to {@code query}.
-     */
-    protected abstract ListenableFuture<PreparedStatement> prepareAsync(String query, Map<String, ByteBuffer> customPayload);
 
     /**
      * {@inheritDoc}

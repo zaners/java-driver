@@ -146,7 +146,7 @@ class SessionManager extends AbstractSession {
     }
 
     @Override
-    protected ListenableFuture<PreparedStatement> prepareAsync(String query, Map<String, ByteBuffer> customPayload) {
+    public ListenableFuture<PreparedStatement> prepareAsync(String query, Map<String, ByteBuffer> customPayload) {
         Requests.Prepare request = new Requests.Prepare(query);
         request.setCustomPayload(customPayload);
         Connection.Future future = new Connection.Future(request);
