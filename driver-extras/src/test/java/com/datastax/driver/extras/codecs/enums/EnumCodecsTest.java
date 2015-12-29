@@ -79,8 +79,8 @@ public class EnumCodecsTest extends CCMBridge.PerClassSingleNodeCluster {
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withCodecRegistry(
+    protected Cluster.Builder configure() {
+        return super.configure().withCodecRegistry(
                 new CodecRegistry()
                         .register(new EnumOrdinalCodec<Foo>(Foo.class))
                         .register(new EnumNameCodec<Bar>(Bar.class))

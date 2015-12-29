@@ -53,8 +53,8 @@ public class Jsr353JsonCodecTest extends CCMBridge.PerClassSingleNodeCluster {
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withCodecRegistry(
+    protected Cluster.Builder configure() {
+        return super.configure().withCodecRegistry(
                 new CodecRegistry().register(jsonCodec) // global User <-> varchar codec
         );
     }

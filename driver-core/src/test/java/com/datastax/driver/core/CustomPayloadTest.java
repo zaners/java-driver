@@ -300,4 +300,10 @@ public class CustomPayloadTest extends CCMBridge.PerClassSingleNodeCluster {
         return Collections.singletonList("CREATE TABLE t1 (c1 int, c2 text,  PRIMARY KEY (c1, c2))");
     }
 
+    @Override
+    protected CCMBridge.Builder configureCCM(ProtocolVersion protocolVersion) {
+        return super.configureCCM(protocolVersion)
+                .withJvmArgs("-Dcassandra.custom_query_handler_class=org.apache.cassandra.cql3.CustomPayloadMirroringQueryHandler");
+    }
+
 }

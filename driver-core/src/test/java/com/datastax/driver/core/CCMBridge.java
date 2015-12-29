@@ -19,6 +19,7 @@ import com.datastax.driver.core.exceptions.AlreadyExistsException;
 import com.datastax.driver.core.exceptions.DriverException;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.google.common.base.Joiner;
+import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.google.common.io.ByteStreams;
@@ -35,6 +36,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -222,9 +224,12 @@ public class CCMBridge {
 
     private final boolean isDSE;
 
-    private CCMBridge(boolean isDSE) {
+    private final String jvmArgs;
+
+    private CCMBridge(boolean isDSE, String... jvmArgs) {
         this.ccmDir = Files.createTempDir();
         this.isDSE = isDSE;
+        this.jvmArgs = joinJvmArgs(jvmArgs);
     }
 
     /**
@@ -333,7 +338,7 @@ public class CCMBridge {
     }
 
     public void start() {
-        execute(CCM_COMMAND + " start --wait-other-notice --wait-for-binary-proto");
+        execute(CCM_COMMAND + " start --wait-other-notice --wait-for-binary-proto" + jvmArgs);
     }
 
     public void stop() {
@@ -345,18 +350,8 @@ public class CCMBridge {
     }
 
     public void start(int n) {
-        logger.info("Starting: " + IP_PREFIX + n);
-        execute(CCM_COMMAND + " node%d start --wait-other-notice --wait-for-binary-proto", n);
-    }
-
-    public void start(int n, String... jvmArg) {
-        StringBuilder jvmArgs = new StringBuilder("");
-        for (int i = 0; i < jvmArg.length; i++) {
-            jvmArgs.append(" --jvm_arg=");
-            jvmArgs.append(jvmArg[i]);
-        }
-        logger.info("Starting: " + IP_PREFIX + n + " with " + jvmArgs);
-        execute(CCM_COMMAND + " node%d start --wait-other-notice --wait-for-binary-proto %s", n, jvmArgs.toString());
+        logger.info("Starting: " + IP_PREFIX + n + (jvmArgs.isEmpty() ? "" : " with JVM args:" + jvmArgs));
+        execute(CCM_COMMAND + " node%d start --wait-other-notice --wait-for-binary-proto" + jvmArgs, n);
     }
 
     public void stop(int n) {
@@ -401,15 +396,14 @@ public class CCMBridge {
         execute(CCM_COMMAND + " node%d start --wait-other-notice --wait-for-binary-proto", n);
     }
 
-    public void bootstrapNodeWithPorts(int n, int thriftPort, int storagePort, int binaryPort, int jmxPort, int remoteDebugPort, String option) {
+    public void bootstrapNodeWithPorts(int n, int thriftPort, int storagePort, int binaryPort, int jmxPort, int remoteDebugPort) {
         String thriftItf = IP_PREFIX + n + ":" + thriftPort;
         String storageItf = IP_PREFIX + n + ":" + storagePort;
         String binaryItf = IP_PREFIX + n + ":" + binaryPort;
         String remoteLogItf = IP_PREFIX + n + ":" + remoteDebugPort;
         execute(CCM_COMMAND + " add node%d -i %s%d -b -t %s -l %s --binary-itf %s -j %d -r %s -s" + (isDSE ? " --dse" : ""),
                 n, IP_PREFIX, n, thriftItf, storageItf, binaryItf, jmxPort, remoteLogItf);
-        if (option == null) start(n);
-        else start(n, option);
+        start(n);
     }
 
     public void decommissionNode(int n) {
@@ -556,14 +550,25 @@ public class CCMBridge {
         }
     }
 
+    private static String joinJvmArgs(String... jvmArgs) {
+        StringBuilder allJvmArgs = new StringBuilder("");
+        if (jvmArgs != null) {
+            for (String jvmArg : jvmArgs) {
+                allJvmArgs.append(" --jvm_arg=");
+                allJvmArgs.append(jvmArg);
+            }
+        }
+        return allJvmArgs.toString();
+    }
+
     // One cluster for the whole test class
     public static abstract class PerClassSingleNodeCluster {
 
+        private static Builder ccmBridgeBuilder;
         private static CCMBridge ccmBridge;
         private static boolean erroredOut;
         private static boolean clusterInitialized = false;
         private static AtomicLong ksNumber;
-        private static final String jvmArgs = "-Dcassandra.custom_query_handler_class=org.apache.cassandra.cql3.CustomPayloadMirroringQueryHandler";
         protected String keyspace;
 
         protected static InetSocketAddress hostAddress;
@@ -574,10 +579,45 @@ public class CCMBridge {
 
         protected final VersionNumber cassandraVersion = VersionNumber.parse(System.getProperty("cassandra.version"));
 
-        protected abstract Collection<String> getTableDefinitions();
+        /**
+         * The DDL statements to execute before the tests.
+         * Useful to create tables or other objects inside the test keyspace.
+         * <p/>
+         * Statements do not need to be qualified with keyspace name.
+         * <p/>
+         * The default implementation returns an empty list (no DDL statements required).
+         *
+         * @return The DDL statements to execute before the tests.
+         */
+        protected Collection<String> getTableDefinitions() {
+            return Collections.emptyList();
+        }
 
-        // Give individual tests a chance to customize the cluster configuration
-        protected Cluster.Builder configure(Cluster.Builder builder) {
+        /**
+         * Give individual tests a chance to customize the cluster configuration.
+         * The default implementation returns a vanilla builder.
+         *
+         * @return The cluster builder to use for the tests.
+         */
+        protected Cluster.Builder configure() {
+            return Cluster.builder();
+        }
+
+        /**
+         * Give individual tests a chance to customize the CCM configuration.
+         * <p/>
+         * The default implementation returns a standard CCM cluster configuration;
+         * user-defined functions are enabled for protocol versions >= 4.
+         *
+         * @return The CCM builder to use for the tests.
+         */
+        protected Builder configureCCM(ProtocolVersion protocolVersion) {
+            Builder builder = CCMBridge.builder("test-class")
+                    .withoutNodes()
+                    .notStarted();
+            if (protocolVersion.compareTo(ProtocolVersion.V4) >= 0) {
+                builder = builder.withCassandraConfiguration("enable_user_defined_functions", "true");
+            }
             return builder;
         }
 
@@ -603,25 +643,30 @@ public class CCMBridge {
         }
 
         private void maybeInitCluster() {
+            ProtocolVersion protocolVersion = TestUtils.getDesiredProtocolVersion();
+            Builder ccmBridgeBuilder = configureCCM(protocolVersion);
+            boolean ccmConfigChanged =
+                    PerClassSingleNodeCluster.ccmBridgeBuilder != null
+                            && !Objects.equal(ccmBridgeBuilder, PerClassSingleNodeCluster.ccmBridgeBuilder);
+            if (ccmConfigChanged) {
+                if (cluster != null) {
+                    cluster.close();
+                }
+                stop();
+                clusterInitialized = false;
+            }
+            PerClassSingleNodeCluster.ccmBridgeBuilder = ccmBridgeBuilder;
             if (!clusterInitialized) {
                 try {
-                    ProtocolVersion protocolVersion = TestUtils.getDesiredProtocolVersion();
 
-                    CCMBridge.Builder builder = CCMBridge.builder("test-class")
-                            .withoutNodes()
-                            .notStarted();
-
-                    if (protocolVersion.compareTo(ProtocolVersion.V4) >= 0) {
-                        builder = builder.withCassandraConfiguration("enable_user_defined_functions", "true");
-                    }
-                    ccmBridge = builder.build();
+                    ccmBridge = PerClassSingleNodeCluster.ccmBridgeBuilder.build();
 
                     ports = new int[5];
                     for (int i = 0; i < 5; i++) {
                         ports[i] = TestUtils.findAvailablePort(11000 + i);
                     }
 
-                    ccmBridge.bootstrapNodeWithPorts(1, ports[0], ports[1], ports[2], ports[3], ports[4], jvmArgs);
+                    ccmBridge.bootstrapNodeWithPorts(1, ports[0], ports[1], ports[2], ports[3], ports[4]);
                     ksNumber = new AtomicLong(0);
                     erroredOut = false;
                     hostAddress = new InetSocketAddress(InetAddress.getByName(IP_PREFIX + 1), ports[2]);
@@ -637,12 +682,10 @@ public class CCMBridge {
 
         }
 
-
         private void initKeyspace() {
             try {
-                Cluster.Builder builder = Cluster.builder();
 
-                builder = configure(builder);
+                Cluster.Builder builder = configure();
 
                 cluster = builder.addContactPointsWithPorts(Collections.singletonList(hostAddress)).build();
                 session = cluster.connect();
@@ -690,7 +733,7 @@ public class CCMBridge {
         }
 
         protected void start() {
-            ccmBridge.start(1, jvmArgs);
+            ccmBridge.start(1);
         }
 
     }
@@ -776,6 +819,7 @@ public class CCMBridge {
         private boolean isDSE = IS_DSE;
         private String cassandraInstallArgs = CASSANDRA_INSTALL_ARGS;
         private String[] startOptions = new String[0];
+        private String[] jvmArgs;
 
         private Map<String, String> cassandraConfiguration = Maps.newHashMap();
 
@@ -855,22 +899,33 @@ public class CCMBridge {
             return this;
         }
 
+        /**
+         * JVM args to use when starting nodes.
+         * System properties should be provided in the form:
+         * {@code -Dname=value}.
+         */
+        public Builder withJvmArgs(String... jvmArgs) {
+            this.jvmArgs = jvmArgs;
+            return this;
+        }
+
         public CCMBridge build() {
-            CCMBridge ccm = new CCMBridge(isDSE);
+            CCMBridge ccm = new CCMBridge(isDSE, jvmArgs);
             ccm.execute(buildCreateCommand());
             if (!cassandraConfiguration.isEmpty())
                 ccm.updateConfig(cassandraConfiguration);
             if (!dseConfiguration.isEmpty())
                 ccm.updateDSEConfig(dseConfiguration);
-            if (start)
+            if (start) {
                 ccm.start();
+            }
             return ccm;
         }
 
         private String buildCreateCommand() {
             StringBuilder result = new StringBuilder(CCM_COMMAND + " create");
             result.append(" " + clusterName);
-            result.append(" -i" + IP_PREFIX);
+            result.append(" -i " + IP_PREFIX);
             result.append(" " + cassandraInstallArgs);
             if (nodes.length > 0)
                 result.append(" -n " + Joiner.on(":").join(nodes));
@@ -878,5 +933,36 @@ public class CCMBridge {
                 result.append(" " + Joiner.on(" ").join(startOptions));
             return result.toString();
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Builder)) return false;
+            Builder builder = (Builder) o;
+            if (start != builder.start) return false;
+            if (isDSE != builder.isDSE) return false;
+            if (!clusterName.equals(builder.clusterName)) return false;
+            if (!Arrays.equals(nodes, builder.nodes)) return false;
+            if (!cassandraInstallArgs.equals(builder.cassandraInstallArgs)) return false;
+            if (!Arrays.equals(startOptions, builder.startOptions)) return false;
+            if (!Arrays.equals(jvmArgs, builder.jvmArgs)) return false;
+            if (!cassandraConfiguration.equals(builder.cassandraConfiguration)) return false;
+            return dseConfiguration.equals(builder.dseConfiguration);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = clusterName.hashCode();
+            result = 31 * result + Arrays.hashCode(nodes);
+            result = 31 * result + (start ? 1 : 0);
+            result = 31 * result + (isDSE ? 1 : 0);
+            result = 31 * result + cassandraInstallArgs.hashCode();
+            result = 31 * result + Arrays.hashCode(startOptions);
+            result = 31 * result + Arrays.hashCode(jvmArgs);
+            result = 31 * result + cassandraConfiguration.hashCode();
+            result = 31 * result + dseConfiguration.hashCode();
+            return result;
+        }
     }
+
 }

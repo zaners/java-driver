@@ -38,8 +38,9 @@ public class QueryBuilderRoutingKeyTest extends CCMBridge.PerClassSingleNodeClus
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withQueryOptions(new QueryOptions()
+    protected Cluster.Builder configure() {
+        return super.configure()
+                .withQueryOptions(new QueryOptions()
                         .setRefreshNodeIntervalMillis(0)
                         .setRefreshNodeListIntervalMillis(0)
                         .setRefreshSchemaIntervalMillis(0)

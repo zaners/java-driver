@@ -65,8 +65,8 @@ public class TypeCodecNestedCollectionsIntegrationTest extends CCMBridge.PerClas
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withCodecRegistry(
+    protected Cluster.Builder configure() {
+        return super.configure().withCodecRegistry(
                 new CodecRegistry().register(new MyIntCodec()) // global User <-> varchar codec
         );
     }

@@ -31,8 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class TracingTest extends CCMBridge.PerClassSingleNodeCluster {
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE);
+    protected Cluster.Builder configure() {
+        return super.configure().withRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE);
     }
 
     public static final String KEY = "tracing_test";

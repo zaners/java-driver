@@ -85,9 +85,10 @@ public class ReconnectionTest {
         try {
             ccm = CCMBridge.builder("test")
                     .withCassandraConfiguration("authenticator", "PasswordAuthenticator") // default credentials: cassandra / cassandra
+                    .withJvmArgs("-Dcassandra.superuser_setup_delay_ms=0")
                     .notStarted()
                     .build();
-            ccm.start(1, "-Dcassandra.superuser_setup_delay_ms=0");
+            ccm.start(1);
 
             CountingAuthProvider authProvider = new CountingAuthProvider("cassandra", "cassandra");
             int reconnectionDelayMs = 1000;

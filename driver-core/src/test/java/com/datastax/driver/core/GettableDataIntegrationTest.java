@@ -53,8 +53,8 @@ public class GettableDataIntegrationTest extends CCMBridge.PerClassSingleNodeClu
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return super.configure(builder).withCodecRegistry(registry);
+    protected Cluster.Builder configure() {
+        return super.configure().withCodecRegistry(registry);
     }
 
     @BeforeClass(groups = "short")

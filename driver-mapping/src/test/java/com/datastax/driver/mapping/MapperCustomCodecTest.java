@@ -57,9 +57,10 @@ public class MapperCustomCodecTest extends CCMBridge.PerClassSingleNodeCluster {
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withCodecRegistry(new CodecRegistry()
-                .register(new CustomInt.Codec()));
+    protected Cluster.Builder configure() {
+        return super.configure()
+                .withCodecRegistry(new CodecRegistry()
+                        .register(new CustomInt.Codec()));
     }
 
     @Test(groups = "short")

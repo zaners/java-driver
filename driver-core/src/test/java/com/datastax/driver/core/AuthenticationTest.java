@@ -44,9 +44,10 @@ public class AuthenticationTest {
     public void setupClusterWithAuthentication() throws InterruptedException {
         ccm = CCMBridge.builder("test")
                 .withCassandraConfiguration("authenticator", "PasswordAuthenticator")
+                .withJvmArgs("-Dcassandra.superuser_setup_delay_ms=0")
                 .notStarted()
                 .build();
-        ccm.start(1, "-Dcassandra.superuser_setup_delay_ms=0");
+        ccm.start(1);
 
         // Even though we've override the default user setup delay, still wait
         // one second to make sure we don't race

@@ -42,8 +42,8 @@ public class QueryTimestampTest extends CCMBridge.PerClassSingleNodeCluster {
     private volatile long timestampFromGenerator;
 
     @Override
-    protected Builder configure(Builder builder) {
-        return builder
+    protected Builder configure() {
+        return super.configure()
                 .withTimestampGenerator(new TimestampGenerator() {
                     @Override
                     public long next() {

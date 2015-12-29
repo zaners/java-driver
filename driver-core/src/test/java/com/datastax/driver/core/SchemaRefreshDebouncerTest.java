@@ -62,7 +62,7 @@ public class SchemaRefreshDebouncerTest extends CCMBridge.PerClassSingleNodeClus
         queryOptions.setRefreshSchemaIntervalMillis(DEBOUNCE_TIME);
         queryOptions.setMaxPendingRefreshSchemaRequests(5);
         // Create a separate cluster that will receive the schema events on its control connection.
-        cluster2 = this.configure(Cluster.builder())
+        cluster2 = this.configure()
                 .addContactPointsWithPorts(newArrayList(hostAddress))
                 .withQueryOptions(queryOptions)
                 .build();

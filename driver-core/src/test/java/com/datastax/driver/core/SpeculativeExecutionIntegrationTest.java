@@ -40,9 +40,9 @@ public class SpeculativeExecutionIntegrationTest extends CCMBridge.PerClassSingl
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
+    protected Cluster.Builder configure() {
         timestampGenerator = Mockito.spy(ServerSideTimestampGenerator.INSTANCE);
-        return builder
+        return super.configure()
                 .withTimestampGenerator(timestampGenerator)
                 .withQueryOptions(new QueryOptions().setDefaultIdempotence(true))
                         // Set an artificially low timeout to force speculative execution

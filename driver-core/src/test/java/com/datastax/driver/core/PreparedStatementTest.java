@@ -108,8 +108,8 @@ public class PreparedStatementTest extends CCMBridge.PerClassSingleNodeCluster {
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withQueryOptions(TestUtils.nonDebouncingQueryOptions());
+    protected Cluster.Builder configure() {
+        return super.configure().withQueryOptions(TestUtils.nonDebouncingQueryOptions());
     }
 
     @Test(groups = "short")

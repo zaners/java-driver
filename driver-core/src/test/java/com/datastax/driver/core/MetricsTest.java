@@ -39,8 +39,8 @@ public class MetricsTest extends CCMBridge.PerClassSingleNodeCluster {
     MBeanServer server = ManagementFactory.getPlatformMBeanServer();
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withRetryPolicy(new RetryPolicy() {
+    protected Cluster.Builder configure() {
+        return super.configure().withRetryPolicy(new RetryPolicy() {
             @Override
             public RetryDecision onReadTimeout(Statement statement, ConsistencyLevel cl, int requiredResponses, int receivedResponses, boolean dataRetrieved, int nbRetry) {
                 return retryDecision;
@@ -125,7 +125,7 @@ public class MetricsTest extends CCMBridge.PerClassSingleNodeCluster {
      */
     @Test(groups = "short", expectedExceptions = InstanceNotFoundException.class)
     public void metrics_should_be_null_when_metrics_disabled() throws Exception {
-        Cluster cluster = super.configure(Cluster.builder())
+        Cluster cluster = super.configure()
                 .addContactPointsWithPorts(Collections.singletonList(hostAddress))
                 .withoutMetrics()
                 .build();
@@ -149,7 +149,7 @@ public class MetricsTest extends CCMBridge.PerClassSingleNodeCluster {
      */
     @Test(groups = "short", expectedExceptions = InstanceNotFoundException.class)
     public void should_be_no_jmx_mbean_when_jmx_is_disabled() throws Exception {
-        Cluster cluster = super.configure(Cluster.builder())
+        Cluster cluster = super.configure()
                 .addContactPointsWithPorts(Collections.singletonList(hostAddress))
                 .withoutJMXReporting()
                 .build();

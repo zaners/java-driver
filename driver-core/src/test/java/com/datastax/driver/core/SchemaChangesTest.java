@@ -74,12 +74,12 @@ public class SchemaChangesTest extends CCMBridge.PerClassSingleNodeCluster {
 
     @BeforeClass(groups = "short")
     public void setup() throws InterruptedException {
-        Cluster.Builder builder = configure(Cluster.builder())
+        Cluster.Builder builder = configure()
                 .addContactPointsWithPorts(Collections.singletonList(hostAddress))
                 .withQueryOptions(nonDebouncingQueryOptions());
         cluster1 = builder.build();
         cluster2 = builder.build();
-        schemaDisabledCluster = spy(configure(Cluster.builder())
+        schemaDisabledCluster = spy(configure()
                 .addContactPointsWithPorts(Collections.singletonList(hostAddress))
                 .withClusterName("schema-disabled")
                 .withQueryOptions(nonDebouncingQueryOptions()
@@ -506,7 +506,7 @@ public class SchemaChangesTest extends CCMBridge.PerClassSingleNodeCluster {
      */
     @Test(groups = "short", expectedExceptions = IllegalStateException.class)
     public void should_throw_illegal_state_exception_on_newToken_with_metadata_disabled() {
-        Cluster cluster = configure(Cluster.builder())
+        Cluster cluster = configure()
                 .addContactPointsWithPorts(Collections.singletonList(hostAddress))
                 .withQueryOptions(nonDebouncingQueryOptions()
                                 .setMetadataEnabled(false)
@@ -530,7 +530,7 @@ public class SchemaChangesTest extends CCMBridge.PerClassSingleNodeCluster {
      */
     @Test(groups = "short", expectedExceptions = IllegalStateException.class)
     public void should_throw_illegal_state_exception_on_newTokenRange_with_metadata_disabled() {
-        Cluster cluster = configure(Cluster.builder())
+        Cluster cluster = configure()
                 .addContactPointsWithPorts(Collections.singletonList(hostAddress))
                 .withQueryOptions(nonDebouncingQueryOptions()
                                 .setMetadataEnabled(false)

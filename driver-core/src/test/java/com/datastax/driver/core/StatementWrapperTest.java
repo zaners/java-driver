@@ -37,8 +37,8 @@ public class StatementWrapperTest extends CCMBridge.PerClassSingleNodeCluster {
     CustomRetryPolicy retryPolicy = new CustomRetryPolicy();
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder
+    protected Cluster.Builder configure() {
+        return super.configure()
                 .withLoadBalancingPolicy(loadBalancingPolicy)
                 .withSpeculativeExecutionPolicy(speculativeExecutionPolicy)
                 .withRetryPolicy(retryPolicy);

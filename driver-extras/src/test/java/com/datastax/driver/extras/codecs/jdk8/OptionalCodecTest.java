@@ -49,8 +49,8 @@ public class OptionalCodecTest extends PerClassSingleNodeCluster {
     }
 
     @Override
-    protected Cluster.Builder configure(Cluster.Builder builder) {
-        return builder.withCodecRegistry(registry);
+    protected Cluster.Builder configure() {
+        return super.configure().withCodecRegistry(registry);
     }
 
     @BeforeMethod(groups = "short")
