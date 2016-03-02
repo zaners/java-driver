@@ -15,6 +15,7 @@
  */
 package com.datastax.driver.core;
 
+import com.datastax.driver.core.exceptions.DriverException;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
 import com.datastax.driver.core.exceptions.UnsupportedFeatureException;
 import com.datastax.driver.core.utils.CassandraVersion;
@@ -382,21 +383,35 @@ public class PreparedStatementTest extends CCMTestsSupport {
         }
     }
 
-    @Test(groups = "short", expectedExceptions = {IllegalStateException.class})
+    @Test(groups = "short")
     public void unboundVariableInBoundStatementTest() {
         PreparedStatement ps = session().prepare("INSERT INTO " + SIMPLE_TABLE + " (k, i) VALUES (?, ?)");
         BoundStatement bs = ps.bind("k");
         assertFalse(bs.isSet("i"));
-        session().execute(bs);
+        try {
+            session().execute(bs);
+            fail("Expected a DriverException");
+        } catch (DriverException e) {
+            assertThat(e.getCause())
+                    .isExactlyInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Unset value at index 1");
+        }
     }
 
-    @Test(groups = "short", expectedExceptions = {IllegalStateException.class})
+    @Test(groups = "short")
     @CassandraVersion(major = 2.0)
     public void unboundVariableInBatchStatementTest() {
         PreparedStatement ps = session().prepare("INSERT INTO " + SIMPLE_TABLE + " (k, i) VALUES (?, ?)");
         BatchStatement batch = new BatchStatement();
         batch.add(ps.bind("k"));
-        session().execute(batch);
+        try {
+            session().execute(batch);
+            fail("Expected a DriverException");
+        } catch (DriverException e) {
+            assertThat(e.getCause())
+                    .isExactlyInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Unset value at index 1");
+        }
     }
 
     @Test(groups = "short")

@@ -15,11 +15,19 @@
  */
 package com.datastax.driver.core;
 
+import com.datastax.driver.core.exceptions.DriverException;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.exceptions.SyntaxError;
+import com.datastax.driver.core.exceptions.UnsupportedFeatureException;
+import com.datastax.driver.core.policies.DelegatingLoadBalancingPolicy;
+import com.datastax.driver.core.policies.RoundRobinPolicy;
 import com.datastax.driver.core.utils.CassandraVersion;
+import com.google.common.collect.Iterators;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.Uninterruptibles;
 import org.testng.annotations.Test;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.*;
@@ -250,4 +258,201 @@ public class SessionTest extends CCMTestsSupport {
             fail("Did not expect Exception", e);
         }
     }
+
+    /**
+     * Verifies that a call to session.executeAsync() does not throw an exception
+     * when the request message cannot be created, but returns instead a ResultSetFuture
+     * that is immediately failed.
+     *
+     * @jira_ticket JAVA-1020
+     */
+    @Test(groups = "short")
+    public void should_return_failed_future_when_request_message_cannot_be_created() {
+        Cluster cluster2 = register(
+                createClusterBuilderNoDebouncing()
+                        .addContactPoints(getContactPoints())
+                        .withPort(ccm().getBinaryPort())
+                        .withProtocolVersion(ProtocolVersion.V1)
+                        .build());
+        Session session2 = cluster2.connect();
+        // fetch size not supported with protocol V1
+        Statement stmt = new SimpleStatement("irrelevant").setFetchSize(10);
+        ResultSetFuture future = session2.executeAsync(stmt);
+        // the future should be already done, and failed
+        assertThat(future.isDone()).isTrue();
+        try {
+            future.getUninterruptibly();
+            fail("Expected DriverException");
+        } catch (DriverException e) {
+            // the original exception has been copy()ed
+            assertThat(e.getCause()).isInstanceOf(UnsupportedFeatureException.class);
+        }
+    }
+
+    /**
+     * Verifies that a call to session.executeAsync() does not throw an exception
+     * when the request message cannot be created, but returns instead a ResultSetFuture
+     * that will fail immediately after the session is initialized.
+     *
+     * @jira_ticket JAVA-1020
+     */
+    @Test(groups = "short")
+    public void should_return_failed_future_when_request_message_cannot_be_created_and_session_not_initialized() {
+        Cluster cluster2 = register(
+                createClusterBuilderNoDebouncing()
+                        .addContactPoints(getContactPoints())
+                        .withPort(ccm().getBinaryPort())
+                        .withProtocolVersion(ProtocolVersion.V1)
+                        .build());
+        // do not initialize session yet
+        Session session2 = cluster2.newSession();
+        // fetch size not supported with protocol V1
+        Statement stmt = new SimpleStatement("irrelevant").setFetchSize(10);
+        // should trigger initAsync()
+        ResultSetFuture future = session2.executeAsync(stmt);
+        // the future can be in incomplete state until the session gets initialized
+        try {
+            future.getUninterruptibly();
+            fail("Expected DriverException");
+        } catch (DriverException e) {
+            // the original exception has been copy()ed
+            assertThat(e.getCause()).isInstanceOf(UnsupportedFeatureException.class);
+        }
+    }
+
+    /**
+     * Verifies that a call to session.executeAsync() does not throw an exception
+     * when the request cannot be sent, but returns instead a ResultSetFuture
+     * that is immediately failed.
+     *
+     * @jira_ticket JAVA-1020
+     */
+    @Test(groups = "short")
+    public void should_return_failed_future_when_request_cannot_be_sent() {
+        Cluster cluster2 = register(
+                createClusterBuilderNoDebouncing()
+                        .addContactPoints(getContactPoints())
+                        .withPort(ccm().getBinaryPort())
+                        .withLoadBalancingPolicy(new DelegatingLoadBalancingPolicy(new RoundRobinPolicy()) {
+                            @Override
+                            public Iterator<Host> newQueryPlan(String loggedKeyspace, Statement statement) {
+                                return Iterators.emptyIterator();
+                            }
+                        })
+                        .build());
+        Session session2 = cluster2.connect();
+        // will fail with NoHostAvailableException due to empty query plan
+        ResultSetFuture future = session2.executeAsync("irrelevant");
+        // the future should be already done, and failed
+        assertThat(future.isDone()).isTrue();
+        try {
+            future.getUninterruptibly();
+            fail("Expected NoHostAvailableException");
+        } catch (NoHostAvailableException e) {
+            // ok
+        }
+    }
+
+    /**
+     * Verifies that a call to session.executeAsync() does not throw an exception
+     * when the request cannot be sent, but returns instead a ResultSetFuture
+     * that will fail immediately after the session is initialized.
+     *
+     * @jira_ticket JAVA-1020
+     */
+    @Test(groups = "short")
+    public void should_return_failed_future_when_request_cannot_be_sent_and_session_not_initialized() {
+        Cluster cluster2 = register(
+                createClusterBuilderNoDebouncing()
+                        .addContactPoints(getContactPoints())
+                        .withPort(ccm().getBinaryPort())
+                        .withLoadBalancingPolicy(new DelegatingLoadBalancingPolicy(new RoundRobinPolicy()) {
+                            @Override
+                            public Iterator<Host> newQueryPlan(String loggedKeyspace, Statement statement) {
+                                return Iterators.emptyIterator();
+                            }
+                        })
+                        .build());
+        // do not initialize session yet
+        Session session2 = cluster2.newSession();
+        // will fail with NoHostAvailableException due to empty query plan
+        ResultSetFuture future = session2.executeAsync("irrelevant");
+        // the future can be in incomplete state until the session gets initialized
+        try {
+            future.getUninterruptibly();
+            fail("Expected NoHostAvailableException");
+        } catch (NoHostAvailableException e) {
+            // ok
+        }
+    }
+
+
+    //---------------------------------------
+
+    /**
+     * Verifies that a call to session.prepareAsync() does not throw an exception
+     * when the request cannot be sent, but returns instead a future
+     * that is immediately failed.
+     *
+     * @jira_ticket JAVA-1020
+     */
+    @Test(groups = "short")
+    public void should_return_failed_future_when_prepare_cannot_be_sent() {
+        Cluster cluster2 = register(
+                createClusterBuilderNoDebouncing()
+                        .addContactPoints(getContactPoints())
+                        .withPort(ccm().getBinaryPort())
+                        .withLoadBalancingPolicy(new DelegatingLoadBalancingPolicy(new RoundRobinPolicy()) {
+                            @Override
+                            public Iterator<Host> newQueryPlan(String loggedKeyspace, Statement statement) {
+                                return Iterators.emptyIterator();
+                            }
+                        })
+                        .build());
+        Session session2 = cluster2.connect();
+        // will fail with NoHostAvailableException due to empty query plan
+        ListenableFuture<PreparedStatement> future = session2.prepareAsync("irrelevant");
+        // the future should be already done, and failed
+        assertThat(future.isDone()).isTrue();
+        try {
+            Uninterruptibles.getUninterruptibly(future);
+            fail("Expected ExecutionException");
+        } catch (ExecutionException e) {
+            assertThat(e.getCause()).isInstanceOf(NoHostAvailableException.class);
+        }
+    }
+
+    /**
+     * Verifies that a call to session.prepareAsync() does not throw an exception
+     * when the request cannot be sent, but returns instead a future
+     * that will fail immediately after the session is initialized.
+     *
+     * @jira_ticket JAVA-1020
+     */
+    @Test(groups = "short")
+    public void should_return_failed_future_when_prepare_cannot_be_sent_and_session_not_initialized() {
+        Cluster cluster2 = register(
+                createClusterBuilderNoDebouncing()
+                        .addContactPoints(getContactPoints())
+                        .withPort(ccm().getBinaryPort())
+                        .withLoadBalancingPolicy(new DelegatingLoadBalancingPolicy(new RoundRobinPolicy()) {
+                            @Override
+                            public Iterator<Host> newQueryPlan(String loggedKeyspace, Statement statement) {
+                                return Iterators.emptyIterator();
+                            }
+                        })
+                        .build());
+        // do not initialize session yet
+        Session session2 = cluster2.newSession();
+        // will fail with NoHostAvailableException due to empty query plan
+        ListenableFuture<PreparedStatement> future = session2.prepareAsync("irrelevant");
+        // the future can be in incomplete state until the session gets initialized
+        try {
+            Uninterruptibles.getUninterruptibly(future);
+            fail("Expected ExecutionException");
+        } catch (ExecutionException e) {
+            assertThat(e.getCause()).isInstanceOf(NoHostAvailableException.class);
+        }
+    }
+
 }

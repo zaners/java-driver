@@ -127,20 +127,33 @@ class SessionManager extends AbstractSession {
     @Override
     public ResultSetFuture executeAsync(final Statement statement) {
         if (isInit) {
-            DefaultResultSetFuture future = new DefaultResultSetFuture(this, cluster.manager.protocolVersion(), makeRequestMessage(statement, null));
-            new RequestHandler(this, future, statement).sendRequest();
-            return future;
+            try {
+                DefaultResultSetFuture future = new DefaultResultSetFuture(this, cluster.manager.protocolVersion(), makeRequestMessage(statement, null));
+                new RequestHandler(this, future, statement).sendRequest();
+                return future;
+            } catch (Exception e) {
+                return new ImmediateFailedResultSetFuture(e);
+            }
         } else {
             // If the session is not initialized, we can't call makeRequestMessage() synchronously, because it
             // requires internal Cluster state that might not be initialized yet (like the protocol version).
             // Because of the way the future is built, we need another 'proxy' future that we can return now.
             final ChainedResultSetFuture chainedFuture = new ChainedResultSetFuture();
-            this.initAsync().addListener(new Runnable() {
+            Futures.addCallback(this.initAsync(), new FutureCallback<Session>() {
                 @Override
-                public void run() {
-                    DefaultResultSetFuture actualFuture = new DefaultResultSetFuture(SessionManager.this, cluster.manager.protocolVersion(), makeRequestMessage(statement, null));
-                    execute(actualFuture, statement);
-                    chainedFuture.setSource(actualFuture);
+                public void onSuccess(Session result) {
+                    try {
+                        DefaultResultSetFuture actualFuture = new DefaultResultSetFuture(SessionManager.this, cluster.manager.protocolVersion(), makeRequestMessage(statement, null));
+                        new RequestHandler(SessionManager.this, actualFuture, statement).sendRequest();
+                        chainedFuture.setSource(actualFuture);
+                    } catch (Exception e) {
+                        chainedFuture.setSource(new ImmediateFailedResultSetFuture(e));
+                    }
+                }
+
+                @Override
+                public void onFailure(Throwable t) {
+                    chainedFuture.setSource(new ImmediateFailedResultSetFuture(t));
                 }
             }, executor());
             return chainedFuture;
@@ -148,10 +161,49 @@ class SessionManager extends AbstractSession {
     }
 
     @Override
-    public ListenableFuture<PreparedStatement> prepareAsync(String query) {
-        Connection.Future future = new Connection.Future(new Requests.Prepare(query));
-        execute(future, Statement.DEFAULT);
-        return toPreparedStatement(query, future);
+    public ListenableFuture<PreparedStatement> prepareAsync(final String query) {
+        if (isInit) {
+            try {
+                Connection.Future callback = new Connection.Future(new Requests.Prepare(query));
+                new RequestHandler(this, callback, Statement.DEFAULT).sendRequest();
+                return toPreparedStatement(query, callback);
+            } catch (Exception e) {
+                return Futures.immediateFailedFuture(e);
+            }
+        } else {
+            final SettableFuture<PreparedStatement> future = SettableFuture.create();
+            Futures.addCallback(this.initAsync(), new FutureCallback<Session>() {
+
+                @Override
+                public void onSuccess(Session result) {
+                    Connection.Future callback = new Connection.Future(new Requests.Prepare(query));
+                    try {
+                        new RequestHandler(SessionManager.this, callback, Statement.DEFAULT).sendRequest();
+                    } catch (Exception e) {
+                        future.setException(e);
+                        return;
+                    }
+                    Futures.addCallback(toPreparedStatement(query, callback), new FutureCallback<PreparedStatement>() {
+
+                        @Override
+                        public void onSuccess(PreparedStatement result) {
+                            future.set(result);
+                        }
+
+                        @Override
+                        public void onFailure(Throwable t) {
+                            future.setException(t);
+                        }
+                    }, executor());
+                }
+
+                @Override
+                public void onFailure(Throwable t) {
+                    future.setException(t);
+                }
+            });
+            return future;
+        }
     }
 
     @Override
@@ -588,6 +640,8 @@ class SessionManager extends AbstractSession {
             this.initAsync().addListener(new Runnable() {
                 @Override
                 public void run() {
+                    // FIXME an exception raised here will be propagated to the internal executor
+                    // and logged on System.err - is there anything better that we can do?
                     new RequestHandler(SessionManager.this, callback, statement).sendRequest();
                 }
             }, executor());
