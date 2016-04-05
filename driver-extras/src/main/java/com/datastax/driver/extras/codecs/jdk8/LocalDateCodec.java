@@ -30,7 +30,7 @@ import static java.lang.Long.parseLong;
  * {@link TypeCodec} that maps
  * {@link java.time.LocalDate} to CQL {@code date}.
  */
-@IgnoreJRERequirement
+@IgnoreJDK6Requirement
 @SuppressWarnings("Since15")
 public class LocalDateCodec extends TypeCodec<java.time.LocalDate> {
 

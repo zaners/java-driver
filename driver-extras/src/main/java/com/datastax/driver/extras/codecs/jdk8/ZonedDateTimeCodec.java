@@ -45,7 +45,7 @@ import static com.google.common.base.Preconditions.checkArgument;
  *
  * @see <a href="https://cassandra.apache.org/doc/cql3/CQL-2.2.html#usingtimestamps">'Working with timestamps' section of CQL specification</a>
  */
-@IgnoreJRERequirement
+@IgnoreJDK6Requirement
 @SuppressWarnings("Since15")
 public class ZonedDateTimeCodec extends TypeCodec.AbstractTupleCodec<java.time.ZonedDateTime> {
 

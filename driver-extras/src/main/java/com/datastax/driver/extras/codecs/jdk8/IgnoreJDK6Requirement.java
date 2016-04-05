@@ -21,5 +21,5 @@ package com.datastax.driver.extras.codecs.jdk8;
  * by <a href="http://www.mojohaus.org/animal-sniffer/animal-sniffer-maven-plugin/check-mojo.html">animal-sniffer</a>
  * Maven plugin as they require JDK 8 and not the usual JDK 6.
  */
-@interface IgnoreJRERequirement {
+@interface IgnoreJDK6Requirement {
 }

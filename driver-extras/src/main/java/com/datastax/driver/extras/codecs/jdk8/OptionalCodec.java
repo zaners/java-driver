@@ -28,7 +28,7 @@ import java.util.Map;
  *
  * @param <T> The wrapped Java type
  */
-@IgnoreJRERequirement
+@IgnoreJDK6Requirement
 @SuppressWarnings({"Since15", "OptionalUsedAsFieldOrParameterType"})
 public class OptionalCodec<T> extends MappingCodec<java.util.Optional<T>, T> {
 

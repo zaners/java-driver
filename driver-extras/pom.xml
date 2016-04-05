@@ -156,7 +156,7 @@
                                 <version>1.0</version>
                             </signature>
                             <annotations>
-                                <annotation>com.datastax.driver.extras.codecs.jdk8.IgnoreJRERequirement</annotation>
+                                <annotation>com.datastax.driver.extras.codecs.jdk8.IgnoreJDK6Requirement</annotation>
                             </annotations>
                         </configuration>
                     </execution>
