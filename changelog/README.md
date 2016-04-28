@@ -2,6 +2,8 @@
 
 ### 3.1.0 (in progress)
 
+- [bug] JAVA-1161: ZonedDateTimeCodec and DateTimeCodec do not preserve time zone ID, only the offset.
+
 Merged from 3.0.x branch:
 
 - [bug] JAVA-1179: Request objects should be copied when executed.
