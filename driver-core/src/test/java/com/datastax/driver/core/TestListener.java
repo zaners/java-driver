@@ -116,29 +116,43 @@ public class TestListener extends TestListenerAdapter implements IInvokedMethodL
     }
 
     private static void cassandraVersionCheck(CassandraVersion version) {
-        versionCheck(CCMBridge.getCassandraVersion(), version.major(), version.minor(), version.description());
+        versionCheck(CCMBridge.getCassandraVersion(), version.major(), version.minor(), version.exactRequired()[0], version.description());
     }
 
     private static void dseVersionCheck(DseVersion version) {
         if (CCMBridge.isDSE()) {
-            versionCheck(CCMBridge.getDSEVersion(), version.major(), version.minor(), version.description());
+            versionCheck(CCMBridge.getDSEVersion(), version.major(), version.minor(), version.exactRequired()[0], version.description());
         } else {
             throw new SkipException("Skipping test because not configured for DataStax Enterprise cluster.");
         }
     }
 
-    private static void versionCheck(String version, double majorCheck, int minorCheck, String skipString) {
+    private static void versionCheck(String version, double majorCheck, int minorCheck, boolean required, String skipString) {
         if (version == null) {
             throw new SkipException("Skipping test because provided version is null");
         } else {
+            String requirement = minorCheck == -1 ? "" + majorCheck : (majorCheck + "." + minorCheck);
             String[] versionArray = version.split("\\.|-");
             double major = Double.parseDouble(versionArray[0] + "." + versionArray[1]);
             // If there is no minor version, assume latest version of whatever was provided.
             int minor = versionArray.length >= 3 ? Integer.parseInt(versionArray[2]) : Integer.MAX_VALUE;
 
-            if (major < majorCheck || (major == majorCheck && minor < minorCheck)) {
-                throw new SkipException("Version >= " + majorCheck + "." + minorCheck + " required.  " +
-                        "Description: " + skipString);
+            if (required) {
+                if (major == majorCheck) {
+                    if (minorCheck != -1 && minor != minorCheck) {
+                        throw new SkipException("Version == " + requirement + " required.  " +
+                                "Description: " + skipString);
+                    }
+                } else {
+                    throw new SkipException("Version == " + requirement + " required.  " +
+                            "Description: " + skipString);
+                }
+            } else {
+                if (major < majorCheck || (major == majorCheck && minor < minorCheck)) {
+
+                    throw new SkipException("Version >= " + requirement + " required.  " +
+                            "Description: " + skipString);
+                }
             }
         }
     }

@@ -34,7 +34,12 @@ public @interface DseVersion {
     /**
      * @return The minor version required to execute this test, i.e. "3"
      */
-    int minor() default 0;
+    int minor() default -1;
+
+    /**
+     * @return Whether or not the exact major version is exactly required to run this test.
+     */
+    boolean[] exactRequired() default {false};
 
     /**
      * @return The description returned if this version requirement is not met.

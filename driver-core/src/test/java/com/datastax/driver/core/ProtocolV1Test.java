@@ -16,6 +16,7 @@
 package com.datastax.driver.core;
 
 import com.datastax.driver.core.exceptions.UnsupportedFeatureException;
+import com.datastax.driver.core.utils.CassandraVersion;
 import org.testng.annotations.Test;
 
 import static com.datastax.driver.core.ProtocolVersion.V1;
@@ -24,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Tests targeting protocol v1 specifically.
  */
-@CCMConfig(version = "1.2.19")
+@CassandraVersion(major = 1.2, exactRequired = true)
 public class ProtocolV1Test extends CCMTestsSupport {
 
     @Override
@@ -35,6 +36,7 @@ public class ProtocolV1Test extends CCMTestsSupport {
 
     /**
      * Validates that a simple query with no variables is correctly executed.
+     *
      * @jira_ticket JAVA-1132
      */
     @Test(groups = "short")
@@ -45,6 +47,7 @@ public class ProtocolV1Test extends CCMTestsSupport {
     /**
      * Validates that a simple query with variables is not allowed with protocol V1.
      * (Values in protocol V1 are only allowed in prepared statements).
+     *
      * @jira_ticket JAVA-1132
      */
     @Test(groups = "short")
@@ -58,6 +61,7 @@ public class ProtocolV1Test extends CCMTestsSupport {
 
     /**
      * Validates that a prepared statement with no variables is correctly prepared and executed.
+     *
      * @jira_ticket JAVA-1132
      */
     @Test(groups = "short")
@@ -68,6 +72,7 @@ public class ProtocolV1Test extends CCMTestsSupport {
 
     /**
      * Validates that a prepared statement with variables is correctly prepared and executed.
+     *
      * @jira_ticket JAVA-1132
      */
     @Test(groups = "short")
