@@ -1020,4 +1020,14 @@ public class QueryBuilderTest {
                 .isEqualTo("SELECT JSON DISTINCT id FROM users;"); // note that the correct syntax is JSON DISTINCT
     }
 
+    @Test(groups = "unit")
+    public void should_handle_insert_json() throws Exception {
+        assertThat(
+                insertInto("example").json("{\"id\": 0, \"tupleval\": [1, \"abc\"], \"numbers\": [1, 2, 3], \"letters\": [\"a\", \"b\", \"c\"]}").toString())
+                .isEqualTo("INSERT INTO example JSON '{\"id\": 0, \"tupleval\": [1, \"abc\"], \"numbers\": [1, 2, 3], \"letters\": [\"a\", \"b\", \"c\"]}';");
+        assertThat(
+                insertInto("users").json("{\"id\": \"user123\", \"\\\"Age\\\"\": 42, \"\\\"State\\\"\": \"TX\"}").toString())
+                .isEqualTo("INSERT INTO users JSON '{\"id\": \"user123\", \"\\\"Age\\\"\": 42, \"\\\"State\\\"\": \"TX\"}';");
+    }
+
 }
