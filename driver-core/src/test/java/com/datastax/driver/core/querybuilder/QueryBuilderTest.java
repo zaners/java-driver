@@ -922,6 +922,7 @@ public class QueryBuilderTest {
     }
 
     @Test(groups = "unit")
+    @CassandraVersion(major = 2.1)
     public void should_serialize_collections_of_serializable_elements() {
         Set<UUID> set = Sets.newHashSet(UUID.randomUUID());
         List<Date> list = Lists.newArrayList(new Date());
@@ -938,6 +939,7 @@ public class QueryBuilderTest {
     }
 
     @Test(groups = "unit")
+    @CassandraVersion(major = 2.1)
     public void should_not_attempt_to_serialize_function_calls_in_collections() {
         BuiltStatement query = insertInto("foo").value("v", Sets.newHashSet(fcall("func", 1)));
         assertThat(query.getQueryString()).isEqualTo("INSERT INTO foo (v) VALUES ({func(1)});");
@@ -945,6 +947,7 @@ public class QueryBuilderTest {
     }
 
     @Test(groups = "unit")
+    @CassandraVersion(major = 2.1)
     public void should_not_attempt_to_serialize_bind_markers_in_collections() {
         BuiltStatement query = insertInto("foo").value("v", Lists.newArrayList(1, 2, bindMarker()));
         assertThat(query.getQueryString()).isEqualTo("INSERT INTO foo (v) VALUES ([1,2,?]);");
@@ -952,6 +955,7 @@ public class QueryBuilderTest {
     }
 
     @Test(groups = "unit")
+    @CassandraVersion(major = 2.1)
     public void should_not_attempt_to_serialize_raw_values_in_collections() {
         BuiltStatement query = insertInto("foo").value("v", ImmutableMap.of(1, raw("x")));
         assertThat(query.getQueryString()).isEqualTo("INSERT INTO foo (v) VALUES ({1:x});");
@@ -959,6 +963,7 @@ public class QueryBuilderTest {
     }
 
     @Test(groups = "unit")
+    @CassandraVersion(major = 2.1)
     public void should_not_attempt_to_serialize_collections_containing_numbers() {
         BuiltStatement query;
         // lists
@@ -997,6 +1002,22 @@ public class QueryBuilderTest {
                     "Native protocol version 2 supports only elements with size up to 65535 bytes - " +
                             "but element size is 65536 bytes");
         }
+    }
+
+    @Test(groups = "unit")
+    public void should_handle_select_json() throws Exception {
+        assertThat(
+                select().json().from("users").toString())
+                .isEqualTo("SELECT JSON * FROM users;");
+        assertThat(
+                select("id", "age").json().from("users").toString())
+                .isEqualTo("SELECT JSON id,age FROM users;");
+        assertThat(
+                select().json().column("id").writeTime("age").ttl("state").as("ttl").from("users").toString())
+                .isEqualTo("SELECT JSON id,writetime(age),ttl(state) AS ttl FROM users;");
+        assertThat(
+                select().distinct().json().column("id").from("users").toString())
+                .isEqualTo("SELECT JSON DISTINCT id FROM users;"); // note that the correct syntax is JSON DISTINCT
     }
 
 }
