@@ -1040,4 +1040,15 @@ public class QueryBuilderTest {
                 .isEqualTo("SELECT DISTINCT toJson(id) AS id FROM users;");
     }
 
+    @Test(groups = "unit")
+    public void should_handle_from_json() throws Exception {
+        assertThat(
+                update("users").with(set("age", fromJson("42"))).where(eq("id", fromJson("\"user123\""))).toString())
+                .isEqualTo("UPDATE users SET age=fromJson('42') WHERE id=fromJson('\"user123\"');");
+        assertThat(
+                insertInto("users").value("id", fromJson("\"user123\"")).value("age", fromJson("42")).toString())
+                .isEqualTo("INSERT INTO users (id,age) VALUES (fromJson('\"user123\"'),fromJson('42'));");
+    }
+
+
 }
