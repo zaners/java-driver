@@ -2,6 +2,8 @@
 
 ### 3.1.0 (in progress)
 
+- [improvement] JAVA-743: QueryBuilder support for JSON.
+
 Merged from 3.0.x branch:
 
 - [bug] JAVA-1179: Request objects should be copied when executed.
