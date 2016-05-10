@@ -1030,4 +1030,14 @@ public class QueryBuilderTest {
                 .isEqualTo("INSERT INTO users JSON '{\"id\": \"user123\", \"\\\"Age\\\"\": 42, \"\\\"State\\\"\": \"TX\"}';");
     }
 
+    @Test(groups = "unit")
+    public void should_handle_to_json() throws Exception {
+        assertThat(
+                select().toJson("id").as("id").toJson("age").as("age").from("users").toString())
+                .isEqualTo("SELECT toJson(id) AS id,toJson(age) AS age FROM users;");
+        assertThat(
+                select().distinct().toJson("id").as("id").from("users").toString())
+                .isEqualTo("SELECT DISTINCT toJson(id) AS id FROM users;");
+    }
+
 }

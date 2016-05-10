@@ -163,13 +163,14 @@ public class Insert extends BuiltStatement {
      * With INSERT statements, the new {@code JSON} keyword can be used to enable inserting a
      * JSON encoded map as a single row.
      * <p>
-     * The format of the JSON string should generally match that returned by a
-     * {@code SELECT JSON} statement on the same table.
-     * <p>
      * <strong>The provided JSON string will be appended to the query string as is.
      * It should NOT be surrounded by single quotes.</strong>
+     * Its format should generally match that returned by a
+     * {@code SELECT JSON} statement on the same table.
      * <p>
-     * Also, users are required to handle case-sensitive column names
+     * Note that it is not possible to insert function calls nor bind markers in the JSON string.
+     * <h3>Case-sensitive column names</h3>
+     * Users are required to handle case-sensitive column names
      * by surrounding them with double quotes.
      * <p>
      * For example, to insert into a table with two columns named “myKey” and “value”,
@@ -181,14 +182,15 @@ public class Insert extends BuiltStatement {
      * <pre>
      * INSERT INTO mytable JSON '{"\"myKey\"": 0, "value": 0}';
      * </pre>
-     * And finally, any text value containing a single quote should be escaped in
-     * the CQL manner, i.e. {@code "foo'bar"} should be inserted in the JSON string
-     * as {@code "foo''bar"}.
+     * <h3>Escaping quotes in column values</h3>
+     * Double quotes should be escaped with a backslash, but single quotes should be escaped in
+     * the CQL manner, i.e. by another single quote. For example, the column value
+     * {@code foo"'bar} should be inserted in the JSON string
+     * as {@code "foo\"''bar"}.
      * <p>
+     * <h3>Null values and tombstones</h3>
      * Any columns which are omitted from the JSON string will be defaulted to a {@code NULL} value
      * (which will result in a tombstone being created).
-     * <p>
-     * Note that it is not possible to insert function calls nor bind markers in the JSON string.
      *
      * @param json the JSON string.
      * @return this INSERT statement.
