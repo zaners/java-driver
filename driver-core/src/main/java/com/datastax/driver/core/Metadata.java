@@ -15,6 +15,8 @@
  */
 package com.datastax.driver.core;
 
+import com.google.common.base.Function;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
@@ -62,22 +64,46 @@ public class Metadata {
         this.cluster = cluster;
     }
 
+    // rebuilds the token map with the current hosts, typically when refreshing schema metadata
+    void rebuildTokenMap() {
+        if (tokenMap == null) return;
+        Token.Factory factory = getTokenFactory(partitioner);
+        if (factory == null) return;
+        rebuildTokenMap(factory, tokenMap.primaryToTokens);
+    }
+
+    // rebuilds the token map for a new set of hosts, typically when refreshing nodes list
     void rebuildTokenMap(String partitioner, Map<Host, Collection<String>> allTokens) {
+        if (allTokens.isEmpty())
+            return;
+        final Token.Factory factory = getTokenFactory(partitioner);
+        if (factory == null) return;
+        rebuildTokenMap(factory, Maps.transformValues(allTokens, new Function<Collection<String>, Collection<Token>>() {
+            @Override
+            public Collection<Token> apply(Collection<String> input) {
+                return Collections2.transform(input, new Function<String, Token>() {
+                    @Override
+                    public Token apply(String input) {
+                        return factory.fromString(input);
+                    }
+                });
+            }
+        }));
+    }
+
+    private void rebuildTokenMap(Token.Factory factory, Map<Host, ? extends Collection<Token>> allTokens) {
         lock.lock();
         try {
-            if (allTokens.isEmpty())
-                return;
-
-            Token.Factory factory = partitioner == null
-                    ? (tokenMap == null ? null : tokenMap.factory)
-                    : Token.getFactory(partitioner);
-            if (factory == null)
-                return;
-
             this.tokenMap = TokenMap.build(factory, allTokens, keyspaces.values());
         } finally {
             lock.unlock();
         }
+    }
+
+    private Token.Factory getTokenFactory(String partitioner) {
+        return partitioner == null
+                ? (tokenMap == null ? null : tokenMap.factory)
+                : Token.getFactory(partitioner);
     }
 
     Host newHost(InetSocketAddress address) {
@@ -612,6 +638,7 @@ public class Metadata {
     static class TokenMap {
 
         private final Token.Factory factory;
+        private final Map<Host, Set<Token>> primaryToTokens;
         private final Map<String, Map<Token, Set<Host>>> tokenToHosts;
         private final Map<String, Map<Host, Set<TokenRange>>> hostsToRanges;
         private final List<Token> ring;
@@ -633,20 +660,20 @@ public class Metadata {
                 Host host = entry.getKey();
                 host.setTokens(ImmutableSet.copyOf(entry.getValue()));
             }
+            this.primaryToTokens = primaryToTokens;
         }
 
-        public static TokenMap build(Token.Factory factory, Map<Host, Collection<String>> allTokens, Collection<KeyspaceMetadata> keyspaces) {
+        public static TokenMap build(Token.Factory factory, Map<Host, ? extends Collection<Token>> allTokens, Collection<KeyspaceMetadata> keyspaces) {
 
             Set<Host> hosts = allTokens.keySet();
             Map<Token, Host> tokenToPrimary = new HashMap<Token, Host>();
             Map<Host, Set<Token>> primaryToTokens = new HashMap<Host, Set<Token>>();
             Set<Token> allSorted = new TreeSet<Token>();
 
-            for (Map.Entry<Host, Collection<String>> entry : allTokens.entrySet()) {
+            for (Map.Entry<Host, ? extends Collection<Token>> entry : allTokens.entrySet()) {
                 Host host = entry.getKey();
-                for (String tokenStr : entry.getValue()) {
+                for (Token t : entry.getValue()) {
                     try {
-                        Token t = factory.fromString(tokenStr);
                         allSorted.add(t);
                         tokenToPrimary.put(t, host);
                         Set<Token> hostTokens = primaryToTokens.get(host);

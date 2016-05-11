@@ -267,15 +267,14 @@ class ControlConnection implements Connection.Owner {
 
             // We need to refresh the node list first so we know about the cassandra version of
             // the node we're connecting to.
+            // This will create the token map for the first time, but it will be incomplete
+            // due to the lack of keyspace information
             refreshNodeListAndTokenMap(connection, cluster, isInitialConnection, true);
 
+            // refresh schema will also update the token map again,
+            // this time with information about keyspaces
             logger.debug("[Control connection] Refreshing schema");
             refreshSchema(connection, null, null, null, null, cluster);
-
-            // We need to refresh the node list again;
-            // We want that because the token map was not properly initialized by the first call above,
-            // since it requires the list of keyspaces to be loaded.
-            refreshNodeListAndTokenMap(connection, cluster, false, false);
 
             return connection;
         } catch (BusyConnectionException e) {
@@ -306,11 +305,6 @@ class ControlConnection implements Connection.Owner {
             if (c == null || c.isClosed())
                 return;
             refreshSchema(c, targetType, targetKeyspace, targetName, signature, cluster);
-            // If we rebuild all from scratch or have an updated keyspace, rebuild the token map
-            // since some replication on some keyspace may have changed
-            if ((targetType == null || targetType == KEYSPACE)) {
-                cluster.submitNodeListRefresh();
-            }
         } catch (ConnectionException e) {
             logger.debug("[Control connection] Connection error while refreshing schema ({})", e.getMessage());
             signalError();

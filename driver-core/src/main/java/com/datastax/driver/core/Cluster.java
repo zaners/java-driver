@@ -2226,15 +2226,15 @@ public class Cluster implements Closeable {
             return schemaRefreshRequestDebouncer.eventReceived(request);
         }
 
-        void submitNodeListRefresh() {
+        ListenableFuture<Void> submitNodeListRefresh() {
             logger.trace("Submitting node list and token map refresh");
-            nodeListRefreshRequestDebouncer.eventReceived(new NodeListRefreshRequest());
+            return nodeListRefreshRequestDebouncer.eventReceived(new NodeListRefreshRequest());
         }
 
-        void submitNodeRefresh(InetSocketAddress address, HostEvent eventType) {
+        ListenableFuture<Void> submitNodeRefresh(InetSocketAddress address, HostEvent eventType) {
             NodeRefreshRequest request = new NodeRefreshRequest(address, eventType);
             logger.trace("Submitting node refresh: {}", request);
-            nodeRefreshRequestDebouncer.eventReceived(request);
+            return nodeRefreshRequestDebouncer.eventReceived(request);
         }
 
         // refresh the schema using the provided connection, and notice the future with the provided resultset once done
