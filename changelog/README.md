@@ -2,6 +2,9 @@
 
 ### 3.1.0 (in progress)
 
+- [improvement] JAVA-1192: Ability to change EventDebouncer settings without restarting the cluster.
+
+
 Merged from 3.0.x branch:
 
 - [bug] JAVA-1179: Request objects should be copied when executed.
