@@ -16,6 +16,7 @@
 - [improvement] JAVA-1200: Upgrade LZ4 to 1.3.0.
 - [bug] JAVA-1232: Fix NPE in IdempotenceAwareRetryPolicy.isIdempotent.
 - [bug] JAVA-1193: Replica metadata should be refreshed synchronously when schema is altered.
+- [bug] JAVA-1120: Consider skipping schema refresh debouncer when checking for agreement as a result of schema change made by client.
 
 
 ### 3.0.2
