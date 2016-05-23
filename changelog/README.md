@@ -15,6 +15,7 @@
 - [improvement] JAVA-1198: Document that BoundStatement is not thread-safe.
 - [improvement] JAVA-1200: Upgrade LZ4 to 1.3.0.
 - [bug] JAVA-1232: Fix NPE in IdempotenceAwareRetryPolicy.isIdempotent.
+- [improvement] JAVA-1126: Mapper should be resilient when table or UDT is modified.
 
 
 ### 3.0.2

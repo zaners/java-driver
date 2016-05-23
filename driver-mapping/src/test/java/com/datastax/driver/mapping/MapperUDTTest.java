@@ -17,34 +17,39 @@ package com.datastax.driver.mapping;
 
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.exceptions.CodecNotFoundException;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
 import com.datastax.driver.core.utils.CassandraVersion;
 import com.datastax.driver.core.utils.UUIDs;
 import com.datastax.driver.mapping.annotations.*;
 import com.google.common.base.Objects;
 import com.google.common.collect.Maps;
 import org.assertj.core.data.MapEntry;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.*;
 
+import static com.datastax.driver.core.CreateCCM.TestMode.PER_METHOD;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.testng.Assert.*;
 
-@SuppressWarnings("unused")
+@SuppressWarnings({"unused", "WeakerAccess"})
 @CassandraVersion(major = 2.1)
+@CreateCCM(PER_METHOD)
 public class MapperUDTTest extends CCMTestsSupport {
 
-    @Override
-    public void onTestContextInitialized() {
+    @BeforeMethod(groups = "short")
+    public void createObjects() {
         execute("CREATE TYPE address (street text, city text, \"ZIP_code\" int, phones set<text>)",
                 "CREATE TABLE users (user_id uuid PRIMARY KEY, name text, mainaddress frozen<address>, other_addresses map<text,frozen<address>>)");
     }
 
-    @BeforeMethod(groups = "short")
-    public void clean() {
-        session().execute("TRUNCATE users");
+    @AfterMethod(groups = "short")
+    public void deleteObjects() {
+        execute("DROP TABLE IF EXISTS users",
+                "DROP TYPE  IF EXISTS address");
     }
 
     @Table(name = "users",
@@ -371,4 +376,121 @@ public class MapperUDTTest extends CCMTestsSupport {
         Map<String, Address> otherAddresses = row.getMap("other_addresses", String.class, Address.class);
         assertThat(otherAddresses).containsOnly(MapEntry.entry("condo", expectedOtherAddress));
     }
+
+    @Test(groups = "short")
+    public void should_work_normally_when_when_table_is_altered_but_remains_compatible() {
+        User expected = new User("Paul", new Address("12 4th Street", "Springfield", 12345, "12341343", "435423245"));
+        Mapper<User> m = new MappingManager(session()).mapper(User.class);
+        session().execute("ALTER TABLE users ADD foo text");
+        m.save(expected);
+        User retrieved = m.get(expected.getUserId());
+        assertThat(retrieved).isEqualTo(expected);
+    }
+
+    @Test(groups = "short")
+    public void should_work_normally_when_udt_is_altered_but_remains_compatible() {
+        User expected = new User("Paul", new Address("12 4th Street", "Springfield", 12345, "12341343", "435423245"));
+        Mapper<User> m = new MappingManager(session()).mapper(User.class);
+        session().execute("ALTER TYPE address ADD foo text");
+        m.save(expected);
+        User retrieved = m.get(expected.getUserId());
+        assertThat(retrieved).isEqualTo(expected);
+    }
+
+    @Test(groups = "short")
+    public void should_throw_error_when_table_is_dropped() {
+        User user = new User("Paul", new Address("12 4th Street", "Springfield", 12345, "12341343", "435423245"));
+        MappingManager manager = new MappingManager(session());
+        Mapper<User> mapper = manager.mapper(User.class);
+        session().execute("DROP TABLE users");
+        // usage of stale mapper
+        try {
+            mapper.save(user);
+            fail("Expected InvalidQueryException");
+        } catch (InvalidQueryException e) {
+            assertThat(e.getMessage()).isEqualTo("unconfigured table users");
+        }
+        try {
+            mapper.get(user.getUserId());
+            fail("Expected InvalidQueryException");
+        } catch (InvalidQueryException e) {
+            assertThat(e.getMessage()).isEqualTo("unconfigured table users");
+        }
+        // trying to use a new mapper
+        manager = new MappingManager(session());
+        try {
+            manager.mapper(User.class);
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertThat(e.getMessage()).isEqualTo("Table users does not exist in keyspace " + keyspace);
+        }
+    }
+
+    @Test(groups = "short")
+    public void should_throw_error_when_table_is_altered_and_is_not_compatible_anymore() {
+        User user = new User("Paul", new Address("12 4th Street", "Springfield", 12345, "12341343", "435423245"));
+        MappingManager manager = new MappingManager(session());
+        Mapper<User> mapper = manager.mapper(User.class);
+        session().execute("ALTER TABLE users DROP mainaddress");
+        // usage of stale mapper
+        try {
+            mapper.save(user);
+            fail("Expected InvalidQueryException");
+        } catch (InvalidQueryException e) {
+            assertThat(e.getMessage()).isEqualTo("Unknown identifier mainaddress");
+        }
+        try {
+            mapper.get(user.getUserId());
+            fail("Expected InvalidQueryException");
+        } catch (InvalidQueryException e) {
+            assertThat(e.getMessage()).isEqualTo("Undefined name mainaddress in selection clause");
+        }
+        // trying to use a new mapper
+        manager = new MappingManager(session());
+        try {
+            manager.mapper(User.class);
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertThat(e.getMessage()).isEqualTo(String.format("Column \"mainaddress\" does not exist in table %s.users", keyspace));
+        }
+    }
+
+    @Test(groups = "short")
+    public void should_throw_error_when_udt_is_altered_and_is_not_compatible_anymore() {
+        User user = new User("Paul", new Address("12 4th Street", "Springfield", 12345, "12341343", "435423245"));
+        MappingManager manager = new MappingManager(session());
+        Mapper<User> mapper = manager.mapper(User.class);
+        session().execute("ALTER TYPE address RENAME \"ZIP_code\" to zip_code");
+        // usage of stale mapper
+        try {
+            mapper.save(user);
+            fail("Expected CodecNotFoundException");
+        } catch (CodecNotFoundException e) {
+            // ok, codec could not be created
+        }
+        // insert manually to be able to test retrieval
+        session().execute("INSERT INTO users (user_id, name, mainaddress) VALUES (?, 'Paul', { street : '12 4th Street', zip_code : 12345 })", user.getUserId());
+        try {
+            mapper.get(user.getUserId());
+            fail("Expected CodecNotFoundException");
+        } catch (CodecNotFoundException e) {
+            // ok, codec could not be created
+        }
+        // trying to use a new mapper
+        manager = new MappingManager(session());
+        try {
+            manager.mapper(User.class);
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertThat(e.getMessage()).isEqualTo(String.format("Field \"ZIP_code\" does not exist in type %s.address", keyspace));
+        }
+        try {
+            manager.udtCodec(Address.class);
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertThat(e.getMessage()).isEqualTo(String.format("Field \"ZIP_code\" does not exist in type %s.address", keyspace));
+        }
+    }
+
+
 }
