@@ -84,4 +84,8 @@ public class Assertions extends org.assertj.core.api.Assertions {
         return new MaterializedViewMetadataAssert(view);
     }
 
+    public static ResultSetAssert assertThat(ResultSet rows) {
+        return new ResultSetAssert(rows);
+    }
+
 }

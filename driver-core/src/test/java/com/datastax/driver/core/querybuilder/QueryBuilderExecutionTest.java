@@ -16,6 +16,7 @@
 package com.datastax.driver.core.querybuilder;
 
 import com.datastax.driver.core.*;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
 import com.datastax.driver.core.utils.CassandraVersion;
 import org.assertj.core.api.iterable.Extractor;
 import org.testng.annotations.Test;
@@ -25,9 +26,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.datastax.driver.core.Assertions.assertThat;
+import static com.datastax.driver.core.ResultSetAssert.row;
 import static com.datastax.driver.core.querybuilder.QueryBuilder.*;
 import static com.datastax.driver.core.schemabuilder.SchemaBuilder.createTable;
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.data.MapEntry.entry;
 import static org.testng.Assert.*;
 
@@ -43,11 +45,18 @@ public class QueryBuilderExecutionTest extends CCMTestsSupport {
                 String.format("CREATE TABLE %s (k text, t text, i int, f float, PRIMARY KEY (k, t))", TABLE2),
                 "CREATE TABLE dateTest (t timestamp PRIMARY KEY)",
                 "CREATE TABLE test_coll (k int PRIMARY KEY, a list<int>, b map<int,text>, c set<text>)",
+                "CREATE TABLE test_ppl (a int, b int, c int, PRIMARY KEY (a, b))",
                 insertInto(TABLE2).value("k", "cast_t").value("t", "a").value("i", 1).value("f", 1.1).toString(),
                 insertInto(TABLE2).value("k", "cast_t").value("t", "b").value("i", 2).value("f", 2.5).toString(),
                 insertInto(TABLE2).value("k", "cast_t").value("t", "c").value("i", 3).value("f", 3.7).toString(),
                 insertInto(TABLE2).value("k", "cast_t").value("t", "d").value("i", 4).value("f", 5.0).toString()
         );
+        // for per partition limit tests
+        for (int i = 0; i < 5; i++) {
+            for (int j = 0; j < 5; j++) {
+                session().execute("INSERT INTO test_ppl (a, b, c) VALUES (?, ?, ?)", i, j, j);
+            }
+        }
     }
 
     @Test(groups = "short")
@@ -300,4 +309,83 @@ public class QueryBuilderExecutionTest extends CCMTestsSupport {
             }
         }).containsOnly("Hello World", "Hello Moon");
     }
+
+    @CassandraVersion(major = 3.6, description = "Support for PER PARTITION LIMIT was added to C* 3.6 (CASSANDRA-7017)")
+    @Test(groups = "short")
+    public void should_support_per_partition_limit() throws Exception {
+        assertThat(session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ?", 2))
+                .contains(
+                        row(0, 0, 0),
+                        row(0, 1, 1),
+                        row(1, 0, 0),
+                        row(1, 1, 1),
+                        row(2, 0, 0),
+                        row(2, 1, 1),
+                        row(3, 0, 0),
+                        row(3, 1, 1),
+                        row(4, 0, 0),
+                        row(4, 1, 1));
+        // Combined Per Partition and "global" limit
+        assertThat(session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ? LIMIT ?", 2, 6)).hasSize(6);
+        // odd amount of results
+        assertThat(session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ? LIMIT ?", 2, 5))
+                .contains(
+                        row(0, 0, 0),
+                        row(0, 1, 1),
+                        row(1, 0, 0),
+                        row(1, 1, 1),
+                        row(2, 0, 0));
+        // IN query
+        assertThat(session().execute("SELECT * FROM test_ppl WHERE a IN (2,3) PER PARTITION LIMIT ?", 2))
+                .contains(
+                        row(2, 0, 0),
+                        row(2, 1, 1),
+                        row(3, 0, 0),
+                        row(3, 1, 1));
+        assertThat(session().execute("SELECT * FROM test_ppl WHERE a IN (2,3) PER PARTITION LIMIT ? LIMIT 3", 2))
+                .hasSize(3);
+        assertThat(session().execute("SELECT * FROM test_ppl WHERE a IN (1,2,3) PER PARTITION LIMIT ? LIMIT 3", 2))
+                .hasSize(3);
+        // with restricted partition key
+        assertThat(session().execute("SELECT * FROM test_ppl WHERE a = ? PER PARTITION LIMIT ?", 2, 3))
+                .containsExactly(
+                        row(2, 0, 0),
+                        row(2, 1, 1),
+                        row(2, 2, 2));
+        // with ordering
+        assertThat(session().execute("SELECT * FROM test_ppl WHERE a = ? ORDER BY b DESC PER PARTITION LIMIT ?", 2, 3))
+                .containsExactly(
+                        row(2, 4, 4),
+                        row(2, 3, 3),
+                        row(2, 2, 2));
+        // with filtering
+        assertThat(session().execute("SELECT * FROM test_ppl WHERE a = ? AND b > ? PER PARTITION LIMIT ? ALLOW FILTERING", 2, 0, 2))
+                .containsExactly(
+                        row(2, 1, 1),
+                        row(2, 2, 2));
+        assertThat(session().execute("SELECT * FROM test_ppl WHERE a = ? AND b > ? ORDER BY b DESC PER PARTITION LIMIT ? ALLOW FILTERING", 2, 2, 2))
+                .containsExactly(
+                        row(2, 4, 4),
+                        row(2, 3, 3));
+        // invalid queries
+        try {
+            session().execute("SELECT DISTINCT a FROM test_ppl PER PARTITION LIMIT ?", 3);
+            fail("Expected InvalidQueryException");
+        } catch (InvalidQueryException e) {
+            assertThat(e).hasMessage("PER PARTITION LIMIT is not allowed with SELECT DISTINCT queries");
+        }
+        try {
+            session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ?", 0);
+            fail("Expected InvalidQueryException");
+        } catch (InvalidQueryException e) {
+            assertThat(e).hasMessage("LIMIT must be strictly positive");
+        }
+        try {
+            session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ?", -1);
+            fail("Expected InvalidQueryException");
+        } catch (InvalidQueryException e) {
+            assertThat(e).hasMessage("LIMIT must be strictly positive");
+        }
+    }
+
 }
