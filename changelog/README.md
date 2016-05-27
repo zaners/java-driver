@@ -2,6 +2,9 @@
 
 ### 3.1.0 (in progress)
 
+- [new feature] JAVA-541: Add polymorphism support to object mapper.
+
+
 Merged from 3.0.x branch:
 
 - [bug] JAVA-1179: Request objects should be copied when executed.
