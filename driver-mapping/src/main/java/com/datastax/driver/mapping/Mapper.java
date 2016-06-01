@@ -69,8 +69,8 @@ public class Mapper<T> {
         this.manager = manager;
         this.mapper = mapper;
 
-        KeyspaceMetadata keyspace = session().getCluster().getMetadata().getKeyspace(mapper.getKeyspace());
-        this.tableMetadata = keyspace == null ? null : keyspace.getTable(mapper.getTable());
+        KeyspaceMetadata keyspace = session().getCluster().getMetadata().getKeyspace(mapper.keyspace);
+        this.tableMetadata = keyspace == null ? null : keyspace.getTable(mapper.table);
 
         this.mapOneFunction = new Function<ResultSet, T>() {
             @Override
