@@ -149,7 +149,7 @@ public class MapperCustomCodecTest extends CCMTestsSupport {
         mapper.delete(2);
     }
 
-    @Test(groups = "short", expectedExceptions = IllegalArgumentException.class)
+    @Test(groups = "short", expectedExceptions = IllegalStateException.class)
     public void should_fail_when_invalid_codec_with_no_default_ctor_provided() {
         new MappingManager(session()).mapper(Data1InvalidCodecNoDefaultConstructor.class);
     }
@@ -173,7 +173,7 @@ public class MapperCustomCodecTest extends CCMTestsSupport {
         mapper.save(data12);
     }
 
-    @Test(groups = "short", expectedExceptions = IllegalArgumentException.class)
+    @Test(groups = "short", expectedExceptions = IllegalStateException.class)
     public void should_fail_when_invalid_codec_with_no_default_ctor_provided_in_accessor() {
         new MappingManager(session()).createAccessor(Data1AccessorNoDefaultConstructor.class);
     }

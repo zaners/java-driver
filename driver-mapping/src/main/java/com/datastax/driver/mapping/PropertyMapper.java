@@ -70,7 +70,7 @@ class PropertyMapper {
             else
                 return field.get(entity);
         } catch (Exception e) {
-            throw new IllegalStateException("Unable to read property '" + propertyName + "' in " + entity.getClass().getName(), e);
+            throw new IllegalStateException("Unable to read property '" + propertyName + "' in " + entity.getClass(), e);
         }
     }
 
@@ -82,7 +82,7 @@ class PropertyMapper {
             else
                 field.set(entity, value);
         } catch (Exception e) {
-            throw new IllegalStateException("Unable to write property '" + propertyName + "' in " + entity.getClass().getName(), e);
+            throw new IllegalStateException("Unable to write property '" + propertyName + "' in " + entity.getClass(), e);
         }
     }
 

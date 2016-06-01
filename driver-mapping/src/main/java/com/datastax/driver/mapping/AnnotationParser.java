@@ -84,7 +84,7 @@ class AnnotationParser {
         if (Strings.isNullOrEmpty(table.keyspace())) {
             ksName = mappingManager.getSession().getLoggedKeyspace();
             if (Strings.isNullOrEmpty(ksName))
-                throw new IllegalArgumentException(String.format(
+                throw new IllegalStateException(String.format(
                         "Error creating mapper for class %s, the @%s annotation declares no default keyspace, and the session is not currently logged to any keyspace",
                         entityClass.getSimpleName(),
                         Table.class.getSimpleName()
@@ -150,7 +150,7 @@ class AnnotationParser {
         if (Strings.isNullOrEmpty(udt.keyspace())) {
             ksName = mappingManager.getSession().getLoggedKeyspace();
             if (Strings.isNullOrEmpty(ksName))
-                throw new IllegalArgumentException(String.format(
+                throw new IllegalStateException(String.format(
                         "Error creating UDT codec for class %s, the @%s annotation declares no default keyspace, and the session is not currently logged to any keyspace",
                         udtClass.getSimpleName(),
                         UDT.class.getSimpleName()
@@ -184,7 +184,7 @@ class AnnotationParser {
 
     static <T> AccessorMapper<T> parseAccessor(Class<T> accClass, MappingManager mappingManager) {
         if (!accClass.isInterface())
-            throw new IllegalArgumentException("@Accessor annotation is only allowed on interfaces, got " + accClass);
+            throw new IllegalStateException("@Accessor annotation is only allowed on interfaces, got " + accClass);
 
         AnnotationChecks.getTypeAnnotation(Accessor.class, accClass);
 
@@ -219,7 +219,7 @@ class AnnotationParser {
                 if (allParamsNamed == null)
                     allParamsNamed = thisParamNamed;
                 else if (allParamsNamed != thisParamNamed)
-                    throw new IllegalArgumentException(String.format("For method '%s', either all or none of the parameters must be named", m.getName()));
+                    throw new IllegalStateException(String.format("For method '%s', either all or none of the parameters must be named", m.getName()));
 
                 paramMappers[i] = newParamMapper(accClass.getName(), m.getName(), i, paramName, codecClass, paramTypes[i], mappingManager);
             }
@@ -264,7 +264,7 @@ class AnnotationParser {
 
             return new ParamMapper(paramName, idx, TypeToken.of(paramType), codecClass);
         } else {
-            throw new IllegalArgumentException(String.format("Cannot map class %s for parameter %s of %s.%s", paramType, paramName, className, methodName));
+            throw new IllegalStateException(String.format("Cannot map class %s for parameter %s of %s.%s", paramType, paramName, className, methodName));
         }
     }
 }

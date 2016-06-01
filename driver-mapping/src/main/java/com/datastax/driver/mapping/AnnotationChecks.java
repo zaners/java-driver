@@ -40,7 +40,7 @@ class AnnotationChecks {
     static <T extends Annotation> T getTypeAnnotation(Class<T> annotation, Class<?> annotatedClass) {
         T instance = annotatedClass.getAnnotation(annotation);
         if (instance == null)
-            throw new IllegalArgumentException(String.format("@%s annotation was not found on %s",
+            throw new IllegalStateException(String.format("@%s annotation was not found on %s",
                     annotation.getSimpleName(), annotatedClass));
 
         // Check that no other mapping annotations are present
@@ -56,7 +56,7 @@ class AnnotationChecks {
         Collections.addAll(classAnnotations, clazz.getAnnotations());
         Class<? extends Annotation> invalid = validateAnnotations(classAnnotations, Collections.singleton(allowed));
         if (invalid != null)
-            throw new IllegalArgumentException(String.format("Cannot have both @%s and @%s on %s",
+            throw new IllegalStateException(String.format("Cannot have both @%s and @%s on %s",
                     allowed.getSimpleName(), invalid.getSimpleName(),
                     clazz));
     }
@@ -67,7 +67,7 @@ class AnnotationChecks {
     static void validateAnnotations(PropertyMapper property, Collection<? extends Class<? extends Annotation>> allowed) {
         Class<? extends Annotation> invalid = validateAnnotations(property.getAnnotations(), allowed);
         if (invalid != null) {
-            throw new IllegalArgumentException(String.format("Annotation @%s is not allowed on property '%s'",
+            throw new IllegalStateException(String.format("Annotation @%s is not allowed on property '%s'",
                     invalid.getSimpleName(),
                     property));
         }
@@ -87,17 +87,17 @@ class AnnotationChecks {
 
     private static void checkValidPrimaryKey(PropertyMapper property) {
         if (property.isPartitionKey() && property.isClusteringColumn())
-            throw new IllegalArgumentException(String.format("Property '%s' cannot be annotated with both @PartitionKey and @ClusteringColumn", property));
+            throw new IllegalStateException(String.format("Property '%s' cannot be annotated with both @PartitionKey and @ClusteringColumn", property));
     }
 
     private static void checkValidComputed(PropertyMapper property) {
         if (property.isComputed()) {
             Computed computed = property.annotation(Computed.class);
             if (computed.value().isEmpty()) {
-                throw new IllegalArgumentException(String.format("Property '%s': attribute 'value' of annotation @Computed is mandatory for computed properties", property));
+                throw new IllegalStateException(String.format("Property '%s': attribute 'value' of annotation @Computed is mandatory for computed properties", property));
             }
             if (property.hasAnnotation(Column.class)) {
-                throw new IllegalArgumentException(String.format("Property '%s' cannot be annotated with both @Column and @Computed", property));
+                throw new IllegalStateException(String.format("Property '%s' cannot be annotated with both @Column and @Computed", property));
             }
         }
     }
@@ -105,9 +105,9 @@ class AnnotationChecks {
     static void validateOrder(List<PropertyMapper> properties, String annotation) {
         for (int i = 0; i < properties.size(); i++) {
             PropertyMapper property = properties.get(i);
-            int pos = property.getPosition();
+            int pos = property.position;
             if (pos != i)
-                throw new IllegalArgumentException(String.format("Invalid ordering value %d for annotation %s of property '%s', was expecting %d",
+                throw new IllegalStateException(String.format("Invalid ordering value %d for annotation %s of property '%s', was expecting %d",
                         pos, annotation, property, i));
         }
     }

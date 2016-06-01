@@ -44,7 +44,7 @@ class ReflectionUtils {
                 constructor.setAccessible(true);
                 return constructor.newInstance();
             } catch (Exception e1) {
-                throw new IllegalArgumentException("Can't create an instance of " + clazz.getName());
+                throw new IllegalStateException("Can't create an instance of " + clazz.getName());
             }
         }
     }
