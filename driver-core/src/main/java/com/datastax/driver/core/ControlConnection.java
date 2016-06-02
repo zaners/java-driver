@@ -750,13 +750,15 @@ class ControlConnection implements Connection.Owner {
     public void onUp(Host host) {
     }
 
+    public void onAdd(Host host) {
+    }
+
     public void onDown(Host host) {
         onHostGone(host);
     }
 
     public void onRemove(Host host) {
         onHostGone(host);
-        cluster.submitNodeListRefresh();
     }
 
     private void onHostGone(Host host) {
@@ -777,11 +779,4 @@ class ControlConnection implements Connection.Owner {
             backgroundReconnect(0);
     }
 
-    public void onAdd(Host host) {
-        // Refresh infos and token map if we didn't knew about that host, i.e. if we either don't have basic infos on it,
-        // or it's not part of our computed token map
-        Metadata.TokenMap tkmap = cluster.metadata.tokenMap;
-        if (host.getCassandraVersion() == null || tkmap == null || !tkmap.hosts.contains(host))
-            cluster.submitNodeListRefresh();
-    }
 }

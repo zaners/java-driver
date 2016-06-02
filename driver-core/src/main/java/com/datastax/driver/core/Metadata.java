@@ -43,7 +43,7 @@ public class Metadata {
     volatile String partitioner;
     private final ConcurrentMap<InetSocketAddress, Host> hosts = new ConcurrentHashMap<InetSocketAddress, Host>();
     final ConcurrentMap<String, KeyspaceMetadata> keyspaces = new ConcurrentHashMap<String, KeyspaceMetadata>();
-    volatile TokenMap tokenMap;
+    private volatile TokenMap tokenMap;
 
     final ReentrantLock lock = new ReentrantLock();
 
