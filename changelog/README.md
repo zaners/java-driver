@@ -1,5 +1,10 @@
 ## Changelog
 
+### 2.1.10.3 (in progress)
+
+- [bug] JAVA-1206: log custom type columns in query logger.
+
+
 ### 2.1.10.2
 
 Merged from 2.0 branch:

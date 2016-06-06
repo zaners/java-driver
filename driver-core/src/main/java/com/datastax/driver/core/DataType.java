@@ -900,16 +900,16 @@ public abstract class DataType {
             return customClassName;
         }
 
-        @Override
-        public Object parse(String value) {
-            throw new InvalidTypeException("Cannot parse values of custom types");
-        }
-
-        @Override
-        public String format(Object value) {
-            throw new InvalidTypeException("Cannot format values of custom types");
-        }
-
+        //        @Override
+//        public Object parse(String value) {
+//            throw new InvalidTypeException("Cannot parse values of custom types");
+//        }
+//
+//        @Override
+//        public String format(Object value) {
+//            throw new InvalidTypeException("Cannot format values of custom types");
+//        }
+//
         @Override
         public final int hashCode() {
             return Arrays.hashCode(new Object[]{name, customClassName});
