@@ -54,7 +54,7 @@ public class QueryBuilderExecutionTest extends CCMTestsSupport {
         // for per partition limit tests
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < 5; j++) {
-                session().execute("INSERT INTO test_ppl (a, b, c) VALUES (?, ?, ?)", i, j, j);
+                session().execute(String.format("INSERT INTO test_ppl (a, b, c) VALUES (%d, %d, %d)", i, j, j));
             }
         }
     }
