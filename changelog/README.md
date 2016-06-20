@@ -2,6 +2,8 @@
 
 ### 3.1.0 (in progress)
 
+- [improvement] JAVA-1212: Don't retry non-idempotent statements by default.
+
 Merged from 3.0.x branch:
 
 - [bug] JAVA-1179: Request objects should be copied when executed.
