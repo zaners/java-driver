@@ -4,7 +4,7 @@
 
 - [new feature] JAVA-541: Add polymorphism support to object mapper.
 - [new feature] JAVA-636: Allow @Column annotations on getters/setters as well as fields.
-
+- [new feature] JAVA-984: Allow non-void setters in object mapping.
 
 Merged from 3.0.x branch:
 
