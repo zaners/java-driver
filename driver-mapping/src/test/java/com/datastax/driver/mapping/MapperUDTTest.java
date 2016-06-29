@@ -458,13 +458,13 @@ public class MapperUDTTest extends CCMTestsSupport {
             mapper.save(user);
             fail("Expected InvalidQueryException");
         } catch (InvalidQueryException e) {
-            assertThat(e.getMessage()).isEqualTo("unconfigured table users");
+            assertThat(e.getMessage()).contains("unconfigured", "users");
         }
         try {
             mapper.get(user.getUserId());
             fail("Expected InvalidQueryException");
         } catch (InvalidQueryException e) {
-            assertThat(e.getMessage()).isEqualTo("unconfigured table users");
+            assertThat(e.getMessage()).contains("unconfigured", "users");
         }
         // trying to use a new mapper
         try {
