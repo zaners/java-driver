@@ -152,7 +152,7 @@ class AnnotationParser {
 
         UserType userType = mappingManager.getSession().getCluster().getMetadata().getKeyspace(ksName).getUserType(udtName);
         if (userType == null)
-            throw new IllegalStateException(String.format("User type %s does not exist in keyspace %s", udtName, ksName));
+            throw new IllegalArgumentException(String.format("User type %s does not exist in keyspace %s", udtName, ksName));
 
         List<Field> columns = new ArrayList<Field>();
 
