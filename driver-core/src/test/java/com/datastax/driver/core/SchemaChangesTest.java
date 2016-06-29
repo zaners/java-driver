@@ -15,6 +15,7 @@
  */
 package com.datastax.driver.core;
 
+import com.datastax.driver.core.ConditionChecker.ConditionCheckerBuilder;
 import com.datastax.driver.core.utils.Bytes;
 import com.datastax.driver.core.utils.CassandraVersion;
 import com.google.common.collect.Lists;
@@ -24,6 +25,7 @@ import org.mockito.ArgumentCaptor;
 import org.testng.annotations.*;
 
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
 import static com.datastax.driver.core.Assertions.assertThat;
@@ -77,7 +79,7 @@ public class SchemaChangesTest extends CCMTestsSupport {
                 .withPort(ccm().getBinaryPort())
                 .withClusterName("schema-disabled")
                 .withQueryOptions(nonDebouncingQueryOptions()
-                                .setMetadataEnabled(false)
+                        .setMetadataEnabled(false)
                 ).build());
 
         schemaDisabledSession = schemaDisabledCluster.connect();
@@ -472,7 +474,7 @@ public class SchemaChangesTest extends CCMTestsSupport {
     }
 
     @Test(groups = "short", dataProvider = "newKeyspaceName")
-    public void should_notify_of_keyspace_drop(String keyspace) throws InterruptedException {
+    public void should_notify_of_keyspace_drop(final String keyspace) throws InterruptedException {
         execute(CREATE_KEYSPACE, keyspace);
         ArgumentCaptor<KeyspaceMetadata> added = null;
         for (SchemaChangeListener listener : listeners) {
@@ -482,8 +484,7 @@ public class SchemaChangesTest extends CCMTestsSupport {
         }
         assert added != null;
         refreshSchema();
-        for (Metadata m : metadatas())
-            assertThat(m.getReplicas(keyspace, Bytes.fromHexString("0xCAFEBABE"))).isNotEmpty();
+        replicasPresentForKeyspace(keyspace).becomesTrue();
         execute(CREATE_TABLE, keyspace); // to test table drop notifications
         execute(DROP_KEYSPACE, keyspace);
         for (SchemaChangeListener listener : listeners) {
@@ -500,8 +501,8 @@ public class SchemaChangesTest extends CCMTestsSupport {
         refreshSchema();
         for (Metadata m : metadatas()) {
             assertThat(m.getKeyspace(keyspace)).isNull();
-            assertThat(m.getReplicas(keyspace, Bytes.fromHexString("0xCAFEBABE"))).isEmpty();
         }
+        replicasPresentForKeyspace(keyspace).becomesFalse();
     }
 
 
@@ -518,7 +519,7 @@ public class SchemaChangesTest extends CCMTestsSupport {
                 .addContactPoints(getContactPoints())
                 .withPort(ccm().getBinaryPort())
                 .withQueryOptions(nonDebouncingQueryOptions()
-                                .setMetadataEnabled(false)
+                        .setMetadataEnabled(false)
                 ).build();
 
         try {
@@ -543,7 +544,7 @@ public class SchemaChangesTest extends CCMTestsSupport {
                 .addContactPoints(getContactPoints())
                 .withPort(ccm().getBinaryPort())
                 .withQueryOptions(nonDebouncingQueryOptions()
-                                .setMetadataEnabled(false)
+                        .setMetadataEnabled(false)
                 ).build();
 
         try {
@@ -651,5 +652,23 @@ public class SchemaChangesTest extends CCMTestsSupport {
                         cluster2.manager.submitSchemaRefresh(null, null, null, null)));
     }
 
-
+    private ConditionCheckerBuilder replicasPresentForKeyspace(final String keyspace) {
+        // It is not guaranteed that the token map is updated when refreshSchema completes.
+        // The reason why is that the node list refresh is submitted, but the future completion
+        // is not tied to the node list completing.
+        final List<Metadata> metadatas = metadatas();
+        return ConditionChecker.check()
+                .every(100, TimeUnit.MILLISECONDS)
+                .before(10, TimeUnit.SECONDS)
+                .that(new Callable<Boolean>() {
+                    @Override
+                    public Boolean call() throws Exception {
+                        boolean replicasPresent = true;
+                        for (Metadata m : metadatas) {
+                            replicasPresent &= m.getReplicas(keyspace, Bytes.fromHexString("0xCAFEBABE")).size() > 0;
+                        }
+                        return replicasPresent;
+                    }
+                });
+    }
 }
