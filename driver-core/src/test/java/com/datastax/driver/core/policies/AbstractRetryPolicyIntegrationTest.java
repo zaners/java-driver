@@ -44,10 +44,10 @@ import static org.scassandra.http.client.Result.server_error;
 
 /**
  * Base class for retry policy integration tests.
- * <p/>
+ * <p>
  * We use SCassandra to easily simulate specific errors (unavailable, read timeout...) on nodes,
  * and SortingLoadBalancingPolicy to get a predictable order of the query plan (always host1, host2, host3).
- * <p/>
+ * <p>
  * Note that SCassandra only allows a limited number of test cases, for instance it always returns errors
  * with receivedResponses = 0. If that becomes more finely tuneable in the future, we'll be able to add more
  * tests in child classes.
@@ -89,6 +89,8 @@ public class AbstractRetryPolicyIntegrationTest {
                         .setMaxConnectionsPerHost(HostDistance.LOCAL, 1)
                         .setHeartbeatIntervalSeconds(0))
                 .withNettyOptions(nonQuietClusterCloseOptions)
+                // Mark everything as idempotent by default so RetryPolicy is exercised.
+                .withQueryOptions(new QueryOptions().setDefaultIdempotence(true))
                 .build();
 
         session = cluster.connect();
