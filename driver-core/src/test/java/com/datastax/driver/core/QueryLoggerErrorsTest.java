@@ -176,8 +176,8 @@ public class QueryLoggerErrorsTest extends ScassandraTestBase.PerClassCluster {
         // when
         try {
             session.execute(query);
-            fail("Should have thrown NoHostAvailableException");
-        } catch (NoHostAvailableException e) {
+            fail("Should have thrown OperationTimedOutException");
+        } catch (OperationTimedOutException e) {
             // ok
         }
         // then
