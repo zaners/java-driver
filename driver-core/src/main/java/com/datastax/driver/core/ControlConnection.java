@@ -539,7 +539,7 @@ class ControlConnection implements Connection.Owner {
         connection.write(peersFuture);
 
         String partitioner = null;
-        Map<Host, Collection<String>> tokenMap = new HashMap<Host, Collection<String>>();
+        Map<Host, Set<String>> tokenMap = new HashMap<Host, Set<String>>();
 
         // Update cluster name, DC and rack for the one node we are connected to
         Row localRow = localFuture.get().one();

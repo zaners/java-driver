@@ -15,8 +15,6 @@
  */
 package com.datastax.driver.core;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
@@ -66,34 +64,43 @@ public class Metadata {
 
     // rebuilds the token map with the current hosts, typically when refreshing schema metadata
     void rebuildTokenMap() {
-        if (tokenMap == null) return;
-        Token.Factory factory = getTokenFactory(partitioner);
-        if (factory == null) return;
-        rebuildTokenMap(factory, tokenMap.primaryToTokens);
+        lock.lock();
+        try {
+            if (tokenMap == null)
+                return;
+            Token.Factory factory = getTokenFactory(partitioner);
+            if (factory == null)
+                return;
+            this.tokenMap = TokenMap.build(
+                    factory,
+                    tokenMap.primaryToTokens,
+                    keyspaces.values(),
+                    tokenMap.ring,
+                    tokenMap.tokenRanges,
+                    tokenMap.tokenToPrimary);
+        } finally {
+            lock.unlock();
+        }
     }
 
     // rebuilds the token map for a new set of hosts, typically when refreshing nodes list
-    void rebuildTokenMap(String partitioner, Map<Host, Collection<String>> allTokens) {
-        if (allTokens.isEmpty())
-            return;
-        final Token.Factory factory = getTokenFactory(partitioner);
-        if (factory == null) return;
-        rebuildTokenMap(factory, Maps.transformValues(allTokens, new Function<Collection<String>, Collection<Token>>() {
-            @Override
-            public Collection<Token> apply(Collection<String> input) {
-                return Collections2.transform(input, new Function<String, Token>() {
-                    @Override
-                    public Token apply(String input) {
-                        return factory.fromString(input);
-                    }
-                });
-            }
-        }));
-    }
-
-    private void rebuildTokenMap(Token.Factory factory, Map<Host, ? extends Collection<Token>> allTokens) {
+    void rebuildTokenMap(String partitioner, Map<Host, Set<String>> allTokensStr) {
         lock.lock();
         try {
+            if (allTokensStr.isEmpty())
+                return;
+            final Token.Factory factory = getTokenFactory(partitioner);
+            if (factory == null)
+                return;
+            Map<Host, Set<Token>> allTokens = new HashMap<Host, Set<Token>>(allTokensStr.size());
+            for (Map.Entry<Host, Set<String>> entry : allTokensStr.entrySet()) {
+                Set<String> tokensStr = entry.getValue();
+                Set<Token> tokens = new LinkedHashSet<Token>(tokensStr.size());
+                for (String tokenStr : tokensStr) {
+                    tokens.add(factory.fromString(tokenStr));
+                }
+                allTokens.put(entry.getKey(), tokens);
+            }
             this.tokenMap = TokenMap.build(factory, allTokens, keyspaces.values());
         } finally {
             lock.unlock();
@@ -635,7 +642,7 @@ public class Metadata {
         }
     }
 
-    static class TokenMap {
+    private static class TokenMap {
 
         private final Token.Factory factory;
         private final Map<Host, Set<Token>> primaryToTokens;
@@ -644,53 +651,51 @@ public class Metadata {
         private final List<Token> ring;
         private final Set<TokenRange> tokenRanges;
         final Set<Host> hosts;
+        private final Map<Token, Host> tokenToPrimary;
 
         private TokenMap(Token.Factory factory,
+                         Set<Host> hosts,
+                         List<Token> ring,
+                         Set<TokenRange> tokenRanges,
+                         Map<Token, Host> tokenToPrimary,
                          Map<Host, Set<Token>> primaryToTokens,
-                         Map<String, Map<Token, Set<Host>>> tokenToHosts,
-                         Map<String, Map<Host, Set<TokenRange>>> hostsToRanges,
-                         List<Token> ring, Set<TokenRange> tokenRanges, Set<Host> hosts) {
+                         Map<String, Map<Token, Set<Host>>> tokenToHostsByKeyspace,
+                         Map<String, Map<Host, Set<TokenRange>>> hostsToRangesByKeyspace) {
             this.factory = factory;
-            this.tokenToHosts = tokenToHosts;
-            this.hostsToRanges = hostsToRanges;
+            this.hosts = hosts;
             this.ring = ring;
             this.tokenRanges = tokenRanges;
-            this.hosts = hosts;
+            this.tokenToPrimary = tokenToPrimary;
+            this.primaryToTokens = primaryToTokens;
+            this.tokenToHosts = tokenToHostsByKeyspace;
+            this.hostsToRanges = hostsToRangesByKeyspace;
             for (Map.Entry<Host, Set<Token>> entry : primaryToTokens.entrySet()) {
                 Host host = entry.getKey();
                 host.setTokens(ImmutableSet.copyOf(entry.getValue()));
             }
-            this.primaryToTokens = primaryToTokens;
         }
 
-        public static TokenMap build(Token.Factory factory, Map<Host, ? extends Collection<Token>> allTokens, Collection<KeyspaceMetadata> keyspaces) {
-
-            Set<Host> hosts = allTokens.keySet();
+        private static TokenMap build(Token.Factory factory, Map<Host, Set<Token>> allTokens, Collection<KeyspaceMetadata> keyspaces) {
             Map<Token, Host> tokenToPrimary = new HashMap<Token, Host>();
-            Map<Host, Set<Token>> primaryToTokens = new HashMap<Host, Set<Token>>();
             Set<Token> allSorted = new TreeSet<Token>();
-
             for (Map.Entry<Host, ? extends Collection<Token>> entry : allTokens.entrySet()) {
                 Host host = entry.getKey();
                 for (Token t : entry.getValue()) {
                     try {
                         allSorted.add(t);
                         tokenToPrimary.put(t, host);
-                        Set<Token> hostTokens = primaryToTokens.get(host);
-                        if (hostTokens == null) {
-                            hostTokens = new HashSet<Token>();
-                            primaryToTokens.put(host, hostTokens);
-                        }
-                        hostTokens.add(t);
                     } catch (IllegalArgumentException e) {
                         // If we failed parsing that token, skip it
                     }
                 }
             }
-
             List<Token> ring = new ArrayList<Token>(allSorted);
             Set<TokenRange> tokenRanges = makeTokenRanges(ring, factory);
+            return build(factory, allTokens, keyspaces, ring, tokenRanges, tokenToPrimary);
+        }
 
+        private static TokenMap build(Token.Factory factory, Map<Host, Set<Token>> allTokens, Collection<KeyspaceMetadata> keyspaces, List<Token> ring, Set<TokenRange> tokenRanges, Map<Token, Host> tokenToPrimary) {
+            Set<Host> hosts = allTokens.keySet();
             Map<String, Map<Token, Set<Host>>> tokenToHosts = new HashMap<String, Map<Token, Set<Host>>>();
             Map<ReplicationStrategy, Map<Token, Set<Host>>> replStrategyToHosts = new HashMap<ReplicationStrategy, Map<Token, Set<Host>>>();
             Map<String, Map<Host, Set<TokenRange>>> hostsToRanges = new HashMap<String, Map<Host, Set<TokenRange>>>();
@@ -718,7 +723,7 @@ public class Metadata {
                 }
                 hostsToRanges.put(keyspace.getName(), ksRanges);
             }
-            return new TokenMap(factory, primaryToTokens, tokenToHosts, hostsToRanges, ring, tokenRanges, hosts);
+            return new TokenMap(factory, hosts, ring, tokenRanges, tokenToPrimary, allTokens, tokenToHosts, hostsToRanges);
         }
 
         private Set<Host> getReplicas(String keyspace, Token token) {
