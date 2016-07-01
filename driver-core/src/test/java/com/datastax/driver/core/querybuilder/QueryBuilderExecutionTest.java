@@ -16,7 +16,6 @@
 package com.datastax.driver.core.querybuilder;
 
 import com.datastax.driver.core.*;
-import com.datastax.driver.core.exceptions.InvalidQueryException;
 import com.datastax.driver.core.utils.CassandraVersion;
 import org.assertj.core.api.iterable.Extractor;
 import org.testng.annotations.Test;
@@ -310,10 +309,21 @@ public class QueryBuilderExecutionTest extends CCMTestsSupport {
         }).containsOnly("Hello World", "Hello Moon");
     }
 
+    /**
+     * Validates that {@link QueryBuilder} can construct a query using the 'PER PARTITION LIMIT' operator to restrict
+     * the number of rows returned per partition in a query, i.e.:
+     * <p/>
+     * <code>SELECT * FROM test_ppl PER PARTITION LIMIT 2</code>
+     * <p/>
+     *
+     * @test_category queries:builder
+     * @jira_ticket JAVA-1153
+     * @since 3.1.0
+     */
     @CassandraVersion(major = 3.6, description = "Support for PER PARTITION LIMIT was added to C* 3.6 (CASSANDRA-7017)")
     @Test(groups = "short")
     public void should_support_per_partition_limit() throws Exception {
-        assertThat(session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ?", 2))
+        assertThat(session().execute(select().all().from("test_ppl").perPartitionLimit(2)))
                 .contains(
                         row(0, 0, 0),
                         row(0, 1, 1),
@@ -326,9 +336,9 @@ public class QueryBuilderExecutionTest extends CCMTestsSupport {
                         row(4, 0, 0),
                         row(4, 1, 1));
         // Combined Per Partition and "global" limit
-        assertThat(session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ? LIMIT ?", 2, 6)).hasSize(6);
+        assertThat(session().execute(select().all().from("test_ppl").perPartitionLimit(2).limit(6))).hasSize(6);
         // odd amount of results
-        assertThat(session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ? LIMIT ?", 2, 5))
+        assertThat(session().execute(select().all().from("test_ppl").perPartitionLimit(2).limit(5)))
                 .contains(
                         row(0, 0, 0),
                         row(0, 1, 1),
@@ -336,56 +346,43 @@ public class QueryBuilderExecutionTest extends CCMTestsSupport {
                         row(1, 1, 1),
                         row(2, 0, 0));
         // IN query
-        assertThat(session().execute("SELECT * FROM test_ppl WHERE a IN (2,3) PER PARTITION LIMIT ?", 2))
+        assertThat(session().execute(select().all().from("test_ppl").where(in("a", 2, 3)).perPartitionLimit(2)))
                 .contains(
                         row(2, 0, 0),
                         row(2, 1, 1),
                         row(3, 0, 0),
                         row(3, 1, 1));
-        assertThat(session().execute("SELECT * FROM test_ppl WHERE a IN (2,3) PER PARTITION LIMIT ? LIMIT 3", 2))
+        assertThat(session().execute(select().all().from("test_ppl").where(in("a", 2, 3))
+                .perPartitionLimit(bindMarker()).limit(3).getQueryString(), 2))
                 .hasSize(3);
-        assertThat(session().execute("SELECT * FROM test_ppl WHERE a IN (1,2,3) PER PARTITION LIMIT ? LIMIT 3", 2))
+        assertThat(session().execute(select().all().from("test_ppl").where(in("a", 1, 2, 3))
+                .perPartitionLimit(bindMarker()).limit(3).getQueryString(), 2))
                 .hasSize(3);
         // with restricted partition key
-        assertThat(session().execute("SELECT * FROM test_ppl WHERE a = ? PER PARTITION LIMIT ?", 2, 3))
+        assertThat(session().execute(select().all().from("test_ppl").where(eq("a", bindMarker()))
+                .perPartitionLimit(bindMarker()).getQueryString(), 2, 3))
                 .containsExactly(
                         row(2, 0, 0),
                         row(2, 1, 1),
                         row(2, 2, 2));
         // with ordering
-        assertThat(session().execute("SELECT * FROM test_ppl WHERE a = ? ORDER BY b DESC PER PARTITION LIMIT ?", 2, 3))
+        assertThat(session().execute(select().all().from("test_ppl").where(eq("a", bindMarker()))
+                .orderBy(desc("b")).perPartitionLimit(bindMarker()).getQueryString(), 2, 3))
                 .containsExactly(
                         row(2, 4, 4),
                         row(2, 3, 3),
                         row(2, 2, 2));
         // with filtering
-        assertThat(session().execute("SELECT * FROM test_ppl WHERE a = ? AND b > ? PER PARTITION LIMIT ? ALLOW FILTERING", 2, 0, 2))
+        assertThat(session().execute(select().all().from("test_ppl").where(eq("a", bindMarker()))
+                .and(gt("b", bindMarker())).perPartitionLimit(bindMarker()).allowFiltering().getQueryString(), 2, 0, 2))
                 .containsExactly(
                         row(2, 1, 1),
                         row(2, 2, 2));
-        assertThat(session().execute("SELECT * FROM test_ppl WHERE a = ? AND b > ? ORDER BY b DESC PER PARTITION LIMIT ? ALLOW FILTERING", 2, 2, 2))
+        assertThat(session().execute(select().all().from("test_ppl").where(eq("a", bindMarker()))
+                .and(gt("b", bindMarker())).orderBy(desc("b")).perPartitionLimit(bindMarker()).allowFiltering().getQueryString(), 2, 2, 2))
                 .containsExactly(
                         row(2, 4, 4),
                         row(2, 3, 3));
-        // invalid queries
-        try {
-            session().execute("SELECT DISTINCT a FROM test_ppl PER PARTITION LIMIT ?", 3);
-            fail("Expected InvalidQueryException");
-        } catch (InvalidQueryException e) {
-            assertThat(e).hasMessage("PER PARTITION LIMIT is not allowed with SELECT DISTINCT queries");
-        }
-        try {
-            session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ?", 0);
-            fail("Expected InvalidQueryException");
-        } catch (InvalidQueryException e) {
-            assertThat(e).hasMessage("LIMIT must be strictly positive");
-        }
-        try {
-            session().execute("SELECT * FROM test_ppl PER PARTITION LIMIT ?", -1);
-            fail("Expected InvalidQueryException");
-        } catch (InvalidQueryException e) {
-            assertThat(e).hasMessage("LIMIT must be strictly positive");
-        }
     }
 
 }
