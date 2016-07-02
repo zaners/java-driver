@@ -539,7 +539,8 @@ class ControlConnection implements Connection.Owner {
         connection.write(peersFuture);
 
         String partitioner = null;
-        Map<Host, Set<String>> tokenMap = new HashMap<Host, Set<String>>();
+        Token.Factory factory = null;
+        Map<Host, Set<Token>> tokenMap = new HashMap<Host, Set<Token>>();
 
         // Update cluster name, DC and rack for the one node we are connected to
         Row localRow = localFuture.get().one();
@@ -549,8 +550,10 @@ class ControlConnection implements Connection.Owner {
                 cluster.metadata.clusterName = clusterName;
 
             partitioner = localRow.getString("partitioner");
-            if (partitioner != null)
+            if (partitioner != null) {
                 cluster.metadata.partitioner = partitioner;
+                factory = Token.getFactory(partitioner);
+            }
 
             Host host = cluster.metadata.getHost(connection.address);
             // In theory host can't be null. However there is no point in risking a NPE in case we
@@ -559,10 +562,12 @@ class ControlConnection implements Connection.Owner {
                 logger.debug("Host in local system table ({}) unknown to us (ok if said host just got removed)", connection.address);
             } else {
                 updateInfo(host, localRow, cluster, isInitialConnection);
-                if (metadataEnabled) {
-                    Set<String> tokens = localRow.getSet("tokens", String.class);
-                    if (partitioner != null && !tokens.isEmpty())
+                if (metadataEnabled && factory != null) {
+                    Set<String> tokensStr = localRow.getSet("tokens", String.class);
+                    if (!tokensStr.isEmpty()) {
+                        Set<Token> tokens = toTokens(factory, tokensStr);
                         tokenMap.put(host, tokens);
+                    }
                 }
             }
         }
@@ -573,7 +578,7 @@ class ControlConnection implements Connection.Owner {
         List<String> cassandraVersions = new ArrayList<String>();
         List<InetAddress> broadcastAddresses = new ArrayList<InetAddress>();
         List<InetAddress> listenAddresses = new ArrayList<InetAddress>();
-        List<Set<String>> allTokens = new ArrayList<Set<String>>();
+        List<Set<Token>> allTokens = new ArrayList<Set<Token>>();
         List<String> dseVersions = new ArrayList<String>();
         List<Boolean> dseGraphEnabled = new ArrayList<Boolean>();
         List<String> dseWorkloads = new ArrayList<String>();
@@ -590,8 +595,14 @@ class ControlConnection implements Connection.Owner {
             racks.add(row.getString("rack"));
             cassandraVersions.add(row.getString("release_version"));
             broadcastAddresses.add(row.getInet("peer"));
-            if (metadataEnabled)
-                allTokens.add(row.getSet("tokens", String.class));
+            if (metadataEnabled && factory != null) {
+                Set<String> tokensStr = row.getSet("tokens", String.class);
+                Set<Token> tokens = null;
+                if (!tokensStr.isEmpty()) {
+                    tokens = toTokens(factory, tokensStr);
+                }
+                allTokens.add(tokens);
+            }
             InetAddress listenAddress = row.getColumnDefinitions().contains("listen_address") ? row.getInet("listen_address") : null;
             listenAddresses.add(listenAddress);
             String dseWorkload = row.getColumnDefinitions().contains("workload") ? row.getString("workload") : null;
@@ -634,7 +645,7 @@ class ControlConnection implements Connection.Owner {
             if (dseGraphEnabled.get(i) != null)
                 host.setDseGraphEnabled(dseGraphEnabled.get(i));
 
-            if (metadataEnabled && partitioner != null && !allTokens.get(i).isEmpty())
+            if (metadataEnabled && factory != null && allTokens.get(i) != null)
                 tokenMap.put(host, allTokens.get(i));
 
             if (isNew && !isInitialConnection)
@@ -647,8 +658,16 @@ class ControlConnection implements Connection.Owner {
             if (!host.getSocketAddress().equals(connection.address) && !foundHostsSet.contains(host.getSocketAddress()))
                 cluster.removeHost(host, isInitialConnection);
 
-        if (metadataEnabled)
-            cluster.metadata.rebuildTokenMap(partitioner, tokenMap);
+        if (metadataEnabled && factory != null && !tokenMap.isEmpty())
+            cluster.metadata.rebuildTokenMap(factory, tokenMap);
+    }
+
+    private static Set<Token> toTokens(Token.Factory factory, Set<String> tokensStr) {
+        Set<Token> tokens = new LinkedHashSet<Token>(tokensStr.size());
+        for (String tokenStr : tokensStr) {
+            tokens.add(factory.fromString(tokenStr));
+        }
+        return tokens;
     }
 
     private static boolean isValidPeer(Row peerRow, boolean logIfInvalid) {

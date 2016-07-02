@@ -68,11 +68,8 @@ public class Metadata {
         try {
             if (tokenMap == null)
                 return;
-            Token.Factory factory = getTokenFactory(partitioner);
-            if (factory == null)
-                return;
             this.tokenMap = TokenMap.build(
-                    factory,
+                    tokenMap.factory,
                     tokenMap.primaryToTokens,
                     keyspaces.values(),
                     tokenMap.ring,
@@ -84,33 +81,13 @@ public class Metadata {
     }
 
     // rebuilds the token map for a new set of hosts, typically when refreshing nodes list
-    void rebuildTokenMap(String partitioner, Map<Host, Set<String>> allTokensStr) {
+    void rebuildTokenMap(Token.Factory factory, Map<Host, Set<Token>> allTokens) {
         lock.lock();
         try {
-            if (allTokensStr.isEmpty())
-                return;
-            final Token.Factory factory = getTokenFactory(partitioner);
-            if (factory == null)
-                return;
-            Map<Host, Set<Token>> allTokens = new HashMap<Host, Set<Token>>(allTokensStr.size());
-            for (Map.Entry<Host, Set<String>> entry : allTokensStr.entrySet()) {
-                Set<String> tokensStr = entry.getValue();
-                Set<Token> tokens = new LinkedHashSet<Token>(tokensStr.size());
-                for (String tokenStr : tokensStr) {
-                    tokens.add(factory.fromString(tokenStr));
-                }
-                allTokens.put(entry.getKey(), tokens);
-            }
             this.tokenMap = TokenMap.build(factory, allTokens, keyspaces.values());
         } finally {
             lock.unlock();
         }
-    }
-
-    private Token.Factory getTokenFactory(String partitioner) {
-        return partitioner == null
-                ? (tokenMap == null ? null : tokenMap.factory)
-                : Token.getFactory(partitioner);
     }
 
     Host newHost(InetSocketAddress address) {
@@ -297,7 +274,7 @@ public class Metadata {
         if (current == null) {
             return Collections.emptySet();
         } else {
-            Map<Host, Set<TokenRange>> dcRanges = current.hostsToRanges.get(keyspace);
+            Map<Host, Set<TokenRange>> dcRanges = current.hostsToRangesByKeyspace.get(keyspace);
             if (dcRanges == null) {
                 return Collections.emptySet();
             } else {
@@ -417,7 +394,7 @@ public class Metadata {
     KeyspaceMetadata removeKeyspace(String keyspace) {
         KeyspaceMetadata removed = keyspaces.remove(keyspace);
         if (tokenMap != null)
-            tokenMap.tokenToHosts.remove(keyspace);
+            tokenMap.tokenToHostsByKeyspace.remove(keyspace);
         return removed;
     }
 
@@ -646,15 +623,13 @@ public class Metadata {
 
         private final Token.Factory factory;
         private final Map<Host, Set<Token>> primaryToTokens;
-        private final Map<String, Map<Token, Set<Host>>> tokenToHosts;
-        private final Map<String, Map<Host, Set<TokenRange>>> hostsToRanges;
+        private final Map<String, Map<Token, Set<Host>>> tokenToHostsByKeyspace;
+        private final Map<String, Map<Host, Set<TokenRange>>> hostsToRangesByKeyspace;
         private final List<Token> ring;
         private final Set<TokenRange> tokenRanges;
-        final Set<Host> hosts;
         private final Map<Token, Host> tokenToPrimary;
 
         private TokenMap(Token.Factory factory,
-                         Set<Host> hosts,
                          List<Token> ring,
                          Set<TokenRange> tokenRanges,
                          Map<Token, Host> tokenToPrimary,
@@ -662,13 +637,12 @@ public class Metadata {
                          Map<String, Map<Token, Set<Host>>> tokenToHostsByKeyspace,
                          Map<String, Map<Host, Set<TokenRange>>> hostsToRangesByKeyspace) {
             this.factory = factory;
-            this.hosts = hosts;
             this.ring = ring;
             this.tokenRanges = tokenRanges;
             this.tokenToPrimary = tokenToPrimary;
             this.primaryToTokens = primaryToTokens;
-            this.tokenToHosts = tokenToHostsByKeyspace;
-            this.hostsToRanges = hostsToRangesByKeyspace;
+            this.tokenToHostsByKeyspace = tokenToHostsByKeyspace;
+            this.hostsToRangesByKeyspace = hostsToRangesByKeyspace;
             for (Map.Entry<Host, Set<Token>> entry : primaryToTokens.entrySet()) {
                 Host host = entry.getKey();
                 host.setTokens(ImmutableSet.copyOf(entry.getValue()));
@@ -723,17 +697,17 @@ public class Metadata {
                 }
                 hostsToRanges.put(keyspace.getName(), ksRanges);
             }
-            return new TokenMap(factory, hosts, ring, tokenRanges, tokenToPrimary, allTokens, tokenToHosts, hostsToRanges);
+            return new TokenMap(factory, ring, tokenRanges, tokenToPrimary, allTokens, tokenToHosts, hostsToRanges);
         }
 
         private Set<Host> getReplicas(String keyspace, Token token) {
 
-            Map<Token, Set<Host>> keyspaceHosts = tokenToHosts.get(keyspace);
-            if (keyspaceHosts == null)
+            Map<Token, Set<Host>> tokenToHosts = tokenToHostsByKeyspace.get(keyspace);
+            if (tokenToHosts == null)
                 return Collections.emptySet();
 
             // If the token happens to be one of the "primary" tokens, get result directly
-            Set<Host> hosts = keyspaceHosts.get(token);
+            Set<Host> hosts = tokenToHosts.get(token);
             if (hosts != null)
                 return hosts;
 
@@ -745,7 +719,7 @@ public class Metadata {
                     i = 0;
             }
 
-            return keyspaceHosts.get(ring.get(i));
+            return tokenToHosts.get(ring.get(i));
         }
 
         private static Map<Token, Set<Host>> makeNonReplicatedMap(Map<Token, Host> input) {
